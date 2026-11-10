@@ -1,0 +1,223 @@
+{
+  "id": "nodoperaBotClie1",
+  "name": "NodOpera · Bot Clientes WhatsApp",
+  "nodes": [
+    {
+      "id": "44cd1f20-2f23-4d34-82d3-55c704c44652",
+      "name": "Meta verifica (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "8b42e9d3-bf37-4c25-96dc-356f4299ebd3",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "wa-clientes-c9543cf2c6",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "3e1bf0a1-b5c3-408d-8906-1245bb5e205d",
+      "name": "Responder challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query['hub.verify_token'] === $env.WA_VERIFY_TOKEN ? $json.query['hub.challenge'] : 'forbidden' }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "efd367a4-bdae-4c58-aca7-0a39b821bf0d",
+      "name": "Mensaje entrante (POST)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        220
+      ],
+      "webhookId": "c9267d36-0846-4c5a-840b-9c3ef4906ef0",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wa-clientes-c9543cf2c6",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "6ecc0876-06d8-4d1f-85d3-c90247ef61f9",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        220
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "cfg.WA_TOKEN",
+              "value": "={{ $env.WA_TOKEN }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "cfg.WA_GRAPH_VERSION",
+              "value": "={{ $env.WA_GRAPH_VERSION }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "cfg.CLIENTES_PHONE_ID",
+              "value": "={{ $env.CLIENTES_PHONE_ID }}",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "cfg.ADMIN_WA",
+              "value": "={{ $env.ADMIN_WA }}",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "cfg.ODOO_URL",
+              "value": "={{ $env.ODOO_URL }}",
+              "type": "string"
+            },
+            {
+              "id": "6",
+              "name": "cfg.ODOO_DB",
+              "value": "={{ $env.ODOO_DB }}",
+              "type": "string"
+            },
+            {
+              "id": "7",
+              "name": "cfg.ODOO_USER",
+              "value": "={{ $env.ODOO_USER }}",
+              "type": "string"
+            },
+            {
+              "id": "8",
+              "name": "cfg.ODOO_API_KEY",
+              "value": "={{ $env.ODOO_API_KEY }}",
+              "type": "string"
+            },
+            {
+              "id": "9",
+              "name": "cfg.NOTIFY_TO",
+              "value": "={{ $env.NOTIFY_TO }}",
+              "type": "string"
+            },
+            {
+              "id": "10",
+              "name": "cfg.NOTIFY_FROM",
+              "value": "={{ $env.NOTIFY_FROM }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "9b23687d-d189-46f9-9b87-1ee40963b9da",
+      "name": "Bot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        220
+      ],
+      "parameters": {
+        "jsCode": "// NodOpera · Bot Clientes WhatsApp · generado por build.js desde src/core.js + src/clientes.js\n// ============================================================================\n// NodOpera · Núcleo común para bots de WhatsApp Cloud API (n8n Code node)\n// Se concatena antes de demo.js / clientes.js con build.js. No editar dentro de n8n:\n// edita aquí, corre `node build.js` y vuelve a importar el workflow.\n// ============================================================================\n\nconst TZ = 'America/Mexico_City';\n\n/** Recorta un texto al límite que impone WhatsApp para cada campo. */\nfunction cut(s, n) {\n  s = String(s ?? '');\n  return s.length > n ? s.slice(0, n - 1) + '…' : s;\n}\n\n// ---------- Constructores de mensajes (respetan límites de Meta) ----------\nfunction txt(body) {\n  return { type: 'text', text: { body: cut(body, 4096), preview_url: false } };\n}\n\n/** Hasta 3 botones. btns = [[id, título≤20], ...] */\nfunction buttons(body, btns, footer) {\n  const m = {\n    type: 'interactive',\n    interactive: {\n      type: 'button',\n      body: { text: cut(body, 1024) },\n      action: {\n        buttons: btns.slice(0, 3).map(([id, title]) => ({ type: 'reply', reply: { id, title: cut(title, 20) } })),\n      },\n    },\n  };\n  if (footer) m.interactive.footer = { text: cut(footer, 60) };\n  return m;\n}\n\n/** Lista desplegable, hasta 10 filas. rows = [[id, título≤24, descripción≤72], ...] */\nfunction list(body, buttonText, rows, sectionTitle, footer) {\n  const m = {\n    type: 'interactive',\n    interactive: {\n      type: 'list',\n      body: { text: cut(body, 4096) },\n      action: {\n        button: cut(buttonText, 20),\n        sections: [{\n          title: cut(sectionTitle || 'Opciones', 24),\n          rows: rows.slice(0, 10).map(([id, title, description]) => {\n            const r = { id, title: cut(title, 24) };\n            if (description) r.description = cut(description, 72);\n            return r;\n          }),\n        }],\n      },\n    },\n  };\n  if (footer) m.interactive.footer = { text: cut(footer, 60) };\n  return m;\n}\n\n// ---------- Fechas en hora de Guadalajara ----------\nfunction localParts(date) {\n  const f = new Intl.DateTimeFormat('es-MX', {\n    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',\n    hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,\n  });\n  const p = Object.fromEntries(f.formatToParts(date).map((x) => [x.type, x.value]));\n  const wd = new Date(date.toLocaleString('en-US', { timeZone: TZ })).getDay(); // 0=domingo\n  return { y: +p.year, m: +p.month, d: +p.day, hh: +p.hour % 24, mm: +p.minute, wd, ym: `${p.year}-${p.month}` };\n}\nconst DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];\nconst MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];\n\n/** Normaliza texto para comparar palabras clave (sin acentos, minúsculas). */\nfunction norm(s) {\n  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();\n}\n\n/** Últimos 10 dígitos de un número mexicano (5213312345678 -> 3312345678). */\nfunction last10(wa) {\n  return String(wa || '').replace(/\\D/g, '').slice(-10);\n}\nfunction prettyPhone(wa) {\n  const d = last10(wa);\n  return `${d.slice(0, 2)} ${d.slice(2, 6)} ${d.slice(6)}`;\n}\n\n// ---------- Lectura del webhook de Meta ----------\n/** Devuelve los mensajes entrantes ya simplificados. Ignora \"statuses\" (entregado/leído). */\nfunction parseIncoming(body) {\n  const out = [];\n  for (const entry of body?.entry || []) {\n    for (const ch of entry.changes || []) {\n      const v = ch.value || {};\n      const names = Object.fromEntries((v.contacts || []).map((c) => [c.wa_id, c.profile?.name || '']));\n      for (const msg of v.messages || []) {\n        const it = msg.interactive || {};\n        const choice = it.button_reply?.id || it.list_reply?.id || msg.button?.payload || null;\n        const text = msg.text?.body\n          || it.button_reply?.title || it.list_reply?.title || msg.button?.text\n          || msg.image?.caption || msg.document?.caption || msg.video?.caption || '';\n        out.push({\n          id: msg.id,\n          from: msg.from,\n          name: names[msg.from] || '',\n          phoneNumberId: v.metadata?.phone_number_id,\n          type: msg.type,\n          text: String(text).trim(),\n          choice,\n          contextId: msg.context?.id || null,\n          mediaId: msg.image?.id || msg.document?.id || msg.audio?.id || msg.video?.id || null,\n          ts: Number(msg.timestamp || 0) * 1000,\n        });\n      }\n    }\n  }\n  return out;\n}\n\n// ---------- Cliente de WhatsApp Cloud API ----------\n/**\n * cfg = { token, phoneId, version, monthlyLimit }\n * ctx = { http, state, now }\n * Lleva el conteo mensual de mensajes enviados en state.usage para no pasar\n * de los 1,000 mensajes de servicio gratuitos por número al mes (desde oct-2026).\n */\nfunction makeWA(cfg, ctx) {\n  const base = `${cfg.apiBase || 'https://graph.facebook.com'}/${cfg.version || 'v23.0'}/${cfg.phoneId}/messages`;\n  const headers = { Authorization: `Bearer ${cfg.token}`, 'Content-Type': 'application/json' };\n  const st = ctx.state;\n  st.usage = st.usage || {};\n  st.errors = st.errors || [];\n\n  function logError(where, e) {\n    const detail = e?.response?.body?.error || e?.cause?.response?.body?.error || e?.description || e?.message || String(e);\n    st.errors.unshift({ at: ctx.now.toISOString(), where, detail: typeof detail === 'string' ? detail : JSON.stringify(detail) });\n    st.errors = st.errors.slice(0, 30);\n    return detail;\n  }\n\n  return {\n    usedThisMonth() { return st.usage[localParts(ctx.now).ym] || 0; },\n    overLimit() { return cfg.monthlyLimit > 0 && this.usedThisMonth() >= cfg.monthlyLimit; },\n\n    /** Envía un mensaje. Regresa el id del mensaje (wamid) o null si falló. */\n    async send(to, payload) {\n      const ym = localParts(ctx.now).ym;\n      try {\n        const res = await ctx.http({\n          method: 'POST', url: base, headers, json: true,\n          body: { messaging_product: 'whatsapp', recipient_type: 'individual', to, ...payload },\n        });\n        st.usage[ym] = (st.usage[ym] || 0) + 1;\n        return res?.messages?.[0]?.id || null;\n      } catch (e) {\n        logError(`send:${to}`, e);\n        return null;\n      }\n    },\n\n    /** Marca como leído (palomitas azules). No cuenta como mensaje cobrable. */\n    async read(messageId) {\n      try {\n        await ctx.http({ method: 'POST', url: base, headers, json: true,\n          body: { messaging_product: 'whatsapp', status: 'read', message_id: messageId } });\n      } catch (e) { logError('read', e); }\n    },\n    logError,\n  };\n}\n\n/** Evita procesar dos veces el mismo mensaje (Meta reintenta si tardamos). */\nfunction seenBefore(state, id) {\n  state.seen = state.seen || [];\n  if (state.seen.includes(id)) return true;\n  state.seen.unshift(id);\n  state.seen = state.seen.slice(0, 300);\n  return false;\n}\n\n/** Límite por usuario y día, para que nadie se coma el cupo gratuito. */\nfunction rateLimited(state, wa, now, maxPerDay) {\n  const p = localParts(now);\n  const day = `${p.ym}-${p.d}`;\n  state.rl = state.rl && state.rl.day === day ? state.rl : { day, n: {} };\n  state.rl.n[wa] = (state.rl.n[wa] || 0) + 1;\n  return state.rl.n[wa] > maxPerDay;\n}\n\n/** Sesiones de conversación con caducidad. */\nfunction getSession(state, wa, now, ttlMin) {\n  state.s = state.s || {};\n  // limpieza de sesiones viejas (más de 7 días)\n  for (const k of Object.keys(state.s)) if (now - (state.s[k].t || 0) > 7 * 864e5) delete state.s[k];\n  let s = state.s[wa];\n  if (!s || now - (s.t || 0) > ttlMin * 60e3) s = state.s[wa] = { step: 'start', t: +now, isNew: true, keep: s?.keep || {} };\n  else s.isNew = false;\n  s.t = +now;\n  return s;\n}\n\nfunction folio(prefix, now) {\n  const p = localParts(now);\n  return `${prefix}-${String(p.d).padStart(2, '0')}${String(p.hh).padStart(2, '0')}${String(p.mm).padStart(2, '0')}-${Math.floor(Math.random() * 90 + 10)}`;\n}\n\nconst money = (n) => '$' + Number(n).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 });\n\n// ============================================================================\n// Bot de ATENCIÓN A CLIENTES de NodOpera\n// - Menú: soporte (crea ticket en portal.nodopera.com), cotizar, estado de\n//   tickets, hablar con Ulises (pase a humano), horario.\n// - Pase a humano: los mensajes del cliente se reenvían al WhatsApp personal\n//   de Ulises (ADMIN_WA). Ulises contesta deslizando \"Responder\" sobre el\n//   mensaje reenviado y el bot se lo entrega al cliente.\n// ============================================================================\n\nconst CLI = {\n  ttlMin: 60,\n  humanoHoras: 12,\n  maxPorDia: 80,\n  portal: 'https://portal.nodopera.com/my/tickets',\n  horario: 'Lunes a viernes 9:00–18:00 · Sábado 9:00–14:00',\n  areas: [\n    ['infra', 'Redes y servidores', 'Cableado, Wi-Fi, servidores, nube, PCs'],\n    ['cctv', 'Cámaras y accesos', 'CCTV, control de acceso, alarmas'],\n    ['odoo', 'Odoo y procesos', 'Implementación, migración, capacitación'],\n    ['bi', 'Reportes y dashboards', 'Power BI, Looker Studio, indicadores'],\n    ['ia', 'Bots e IA', 'WhatsApp, automatización, n8n, IA'],\n    ['iguala', 'Soporte mensual', 'Iguala de TI con visitas y mesa de ayuda'],\n    ['otro', 'Otro', 'Cuéntanos qué necesitas'],\n  ],\n};\nconst ESTADOS = { new: 'Recibido', assigned: 'Asignado', in_progress: 'En atención', waiting: 'Esperando tu respuesta', done: 'Resuelto', cancel: 'Cancelado' };\nconst PRIORIDAD = { p0: ['0', 'Normal'], p1: ['1', 'Alta'], p2: ['2', 'Urgente'] };\n\nfunction enHorario(now) {\n  const p = localParts(now);\n  if (p.wd >= 1 && p.wd <= 5) return p.hh >= 9 && p.hh < 18;\n  if (p.wd === 6) return p.hh >= 9 && p.hh < 14;\n  return false;\n}\n\nfunction cliMenu(name, now) {\n  const saludo = name ? `¡Hola, ${name.split(' ')[0]}! 👋` : '¡Hola! 👋';\n  const fuera = enHorario(now) ? '' : '\\n\\n🌙 Estamos fuera de horario, pero puedes levantar tu ticket ahora y lo atendemos a primera hora.';\n  return list(\n    `${saludo} Bienvenido a *NodOpera*, soporte y tecnología para tu negocio.${fuera}\\n\\n¿En qué te ayudamos?`,\n    'Ver opciones',\n    [\n      ['sop', '🛠️ Reportar una falla', 'Levanta un ticket de soporte'],\n      ['tk', '🔎 Estado de mis tickets', 'Consulta tus tickets abiertos'],\n      ['cot', '💼 Cotizar un servicio', 'Infraestructura, Odoo, BI, IA'],\n      ['hum', '👤 Hablar con Ulises', 'Te atiende una persona'],\n      ['info', '🕘 Horario y contacto', 'Horario, correo y página web'],\n    ],\n    'NodOpera',\n    'Escribe \"menú\" en cualquier momento',\n  );\n}\n\nfunction volver(texto) {\n  return buttons(texto, [['menu', '🏠 Menú'], ['hum', '👤 Hablar con Ulises']]);\n}\n\n// ----------------------------- Odoo (JSON-RPC) -----------------------------\nfunction makeOdoo(env, ctx) {\n  const url = `${String(env.ODOO_URL || '').replace(/\\/$/, '')}/jsonrpc`;\n  async function rpc(service, method, args) {\n    const res = await ctx.http({ method: 'POST', url, json: true,\n      body: { jsonrpc: '2.0', method: 'call', params: { service, method, args } } });\n    if (res?.error) throw new Error(res.error.data?.message || res.error.message || 'Error de Odoo');\n    return res.result;\n  }\n  async function uid() {\n    const st = ctx.state;\n    if (st.odooUid && st.odooUidFor === env.ODOO_USER) return st.odooUid;\n    const id = await rpc('common', 'authenticate', [env.ODOO_DB, env.ODOO_USER, env.ODOO_API_KEY, {}]);\n    if (!id) throw new Error('Odoo: usuario o API key inválidos');\n    st.odooUid = id; st.odooUidFor = env.ODOO_USER;\n    return id;\n  }\n  async function call(model, method, args, kwargs = {}) {\n    return rpc('object', 'execute_kw', [env.ODOO_DB, await uid(), env.ODOO_API_KEY, model, method, args, kwargs]);\n  }\n  return {\n    enabled: Boolean(env.ODOO_URL && env.ODOO_DB && env.ODOO_USER && env.ODOO_API_KEY),\n    /** Busca el contacto por los últimos 10 dígitos, sin importar espacios o guiones. */\n    async findPartner(wa) {\n      const pat = '%' + last10(wa).split('').join('%') + '%';\n      const r = await call('res.partner', 'search_read', [[['phone', '=ilike', pat]]],\n        { fields: ['id', 'name', 'commercial_partner_id'], limit: 1, order: 'id desc' });\n      if (!r.length) return null;\n      return { id: r[0].id, name: r[0].name, companyId: r[0].commercial_partner_id?.[0] || r[0].id };\n    },\n    async createPartner(name, wa, contacto) {\n      const id = await call('res.partner', 'create', [{\n        name, phone: `+52 ${prettyPhone(wa)}`,\n        comment: `Creado por el bot de WhatsApp. Contacto: ${contacto || '(sin nombre)'}`,\n      }]);\n      return { id, name, companyId: id };\n    },\n    async createTicket({ partner, asunto, descripcion, prioridad }) {\n      const vals = {\n        name: cut(asunto, 80),\n        description: descripcion,\n        partner_id: partner.companyId,\n        priority: prioridad,\n        channel: 'whatsapp',\n      };\n      if (partner.id !== partner.companyId) vals.contact_id = partner.id;\n      const id = await call('nodopera.ticket', 'create', [vals]);\n      const [t] = await call('nodopera.ticket', 'read', [[id], ['number']]);\n      return { id, number: t?.number || `#${id}` };\n    },\n    async openTickets(partner) {\n      return call('nodopera.ticket', 'search_read',\n        [[['partner_id', 'child_of', partner.companyId], ['state', 'not in', ['done', 'cancel']]]],\n        { fields: ['number', 'name', 'state', 'priority'], limit: 5, order: 'create_date desc' });\n    },\n  };\n}\n\nconst esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n\n// --------------------------- Pase a humano (relay) ---------------------------\nasync function forwardToAdmin(ctx, wa, env, m, header) {\n  if (!env.ADMIN_WA) return false;\n  const body = `${header || '💬'} *${m.name || 'Cliente'}* (${prettyPhone(m.from)})\\n${m.text || `[${m.type}]`}\\n\\n↩️ _Desliza \"Responder\" sobre este mensaje para contestarle. Escribe /fin respondiendo aquí para regresarlo al bot._`;\n  const id = await wa.send(env.ADMIN_WA, txt(body));\n  if (id) {\n    ctx.state.fwd = ctx.state.fwd || {};\n    ctx.state.fwd[id] = m.from;\n    const keys = Object.keys(ctx.state.fwd);\n    if (keys.length > 500) for (const k of keys.slice(0, keys.length - 500)) delete ctx.state.fwd[k];\n  }\n  return Boolean(id);\n}\n\nasync function adminCommand(m, ctx, wa, env) {\n  const st = ctx.state;\n  st.human = st.human || {};\n  const t = m.text || '';\n  let target = m.contextId ? st.fwd?.[m.contextId] : null;\n  const explicit = t.match(/^\\/(r|fin)\\s+(\\+?[\\d\\s-]{10,16})\\s*(.*)$/s);\n  if (explicit) target = Object.keys(st.human).find((k) => last10(k) === last10(explicit[2])) || `521${last10(explicit[2])}`;\n  const cmd = norm(t.split(/\\s/)[0]);\n\n  if (cmd === '/estado') {\n    const abiertos = Object.entries(st.human).filter(([, until]) => until > +ctx.now).map(([k]) => `• ${prettyPhone(k)}`);\n    await wa.send(env.ADMIN_WA, txt(`📊 Mensajes enviados este mes: ${wa.usedThisMonth()} de 1,000 gratis.\\nConversaciones con humano abiertas:\\n${abiertos.join('\\n') || '• ninguna'}\\nÚltimo error: ${st.errors?.[0]?.detail || 'ninguno'}`));\n    return;\n  }\n  if (!target) {\n    await wa.send(env.ADMIN_WA, txt('🤖 Modo administrador.\\n• Responde (deslizar) a un mensaje reenviado para contestarle al cliente.\\n• /fin (respondiendo) para regresarlo al bot.\\n• /r 33XXXXXXXX texto para escribirle directo.\\n• /estado para ver uso del mes.'));\n    return;\n  }\n  if (cmd === '/fin') {\n    delete st.human[target];\n    await wa.send(target, buttons('Gracias por escribirnos 🙌 Te regreso con el asistente de NodOpera. Si necesitas algo más, aquí estamos.', [['menu', '🏠 Menú']]));\n    return;\n  }\n  const texto = explicit ? explicit[3] : t;\n  if (!texto.trim()) return;\n  st.human[target] = +ctx.now + CLI.humanoHoras * 3600e3; // mantener abierta la atención humana\n  const ok = await wa.send(target, txt(texto));\n  if (!ok) await wa.send(env.ADMIN_WA, txt(`⚠️ No se pudo entregar al cliente ${prettyPhone(target)}. Si pasaron más de 24 h desde su último mensaje, WhatsApp no deja escribirle sin plantilla. Error: ${st.errors?.[0]?.detail || '?'}`));\n}\n\n// ------------------------------- Conversación -------------------------------\nasync function clienteStep(m, s, ctx, wa, odoo, env) {\n  const say = [];\n  const notify = [];\n  const st = ctx.state;\n  st.human = st.human || {};\n  const t = norm(m.text);\n  let c = m.choice;\n  if (!c && ['hola', 'menu', 'inicio', 'buenas', 'buenos dias', 'buenas tardes', 'buenas noches', 'bot'].includes(t)) c = 'menu';\n  if (!c && ['cancelar', 'salir'].includes(t)) c = 'menu';\n\n  // Conversación en manos de Ulises: solo reenviar\n  if (st.human[m.from] > +ctx.now && c !== 'menu') {\n    const ok = await forwardToAdmin(ctx, wa, env, m);\n    if (!ok && !s.avisoMail) {\n      s.avisoMail = true;\n      notify.push({ subject: `💬 Cliente esperando respuesta: ${m.name || prettyPhone(m.from)}`,\n        text: `No pude reenviarte el mensaje por WhatsApp (abre la ventana escribiéndole cualquier cosa al número del bot).\\n\\nCliente: ${m.name}\\nWhatsApp: https://wa.me/${m.from}\\nMensaje: ${m.text}` });\n    }\n    return { say, notify };\n  }\n  if (c === 'menu' && st.human[m.from]) delete st.human[m.from];\n\n  if (c === 'menu' || (s.isNew && !c)) { s.step = 'start'; say.push(cliMenu(m.name, ctx.now)); return { say, notify }; }\n\n  switch (c || '') {\n    case 'sop':\n      s.step = 'sop_desc'; s.sop = {};\n      say.push(txt('🛠️ Cuéntanos qué está fallando en *un mensaje*: qué equipo o sistema, en qué sucursal y desde cuándo.\\n\\nPuedes mandar una foto con descripción.'));\n      return { say, notify };\n    case 'cot':\n      s.step = 'cot_area';\n      say.push(list('💼 ¿Qué te gustaría cotizar?', 'Ver servicios', CLI.areas.map(([id, n, d]) => [`area_${id}`, n, d]), 'Servicios'));\n      return { say, notify };\n    case 'tk':\n      return { say: [await estadoTickets(m, odoo, ctx)], notify };\n    case 'info':\n      s.step = 'start';\n      say.push(volver(`🕘 *Horario:* ${CLI.horario}\\n📍 Guadalajara y Zapopan, atención en sitio y remota\\n✉️ ulises@nodopera.com\\n🌐 nodopera.com\\n\\nLos tickets urgentes de clientes con póliza se atienden también fuera de horario.`));\n      return { say, notify };\n    case 'hum': {\n      s.step = 'start';\n      st.human[m.from] = +ctx.now + CLI.humanoHoras * 3600e3;\n      const ok = await forwardToAdmin(ctx, wa, env, { ...m, text: 'Pidió hablar con una persona.' }, '🙋');\n      notify.push({ subject: `🙋 ${m.name || prettyPhone(m.from)} quiere hablar contigo`,\n        text: `Un cliente pidió atención humana en el WhatsApp de NodOpera.\\n\\nCliente: ${m.name}\\nWhatsApp: https://wa.me/${m.from}\\nReenvío por WhatsApp: ${ok ? 'sí' : 'NO (escríbele al bot para abrir la ventana de 24 h)'}` });\n      say.push(txt(enHorario(ctx.now)\n        ? '👤 Listo, ya le avisé a Ulises. Te contesta por aquí en unos minutos. Puedes ir escribiendo tu duda.'\n        : '👤 Ya le avisé a Ulises. Estamos fuera de horario, así que te responde a primera hora. Si es una falla, también puedes escribir *menú* y levantar un ticket.'));\n      return { say, notify };\n    }\n  }\n\n  switch (s.step) {\n    case 'sop_desc': {\n      const desc = m.text || (m.mediaId ? '[foto sin descripción]' : '');\n      if (desc.length < 6) { say.push(txt('Dame un poco más de detalle, por favor: ¿qué equipo o sistema falla y qué pasa?')); break; }\n      s.sop.desc = desc;\n      if (m.mediaId) s.sop.media = m.mediaId;\n      s.step = 'sop_pri';\n      say.push(buttons('¿Qué tan urgente es?\\n\\n*Normal:* puede esperar a la visita o atención remota.\\n*Alta:* afecta a varias personas.\\n*Urgente:* el negocio está detenido.',\n        [['p0', 'Normal'], ['p1', 'Alta'], ['p2', '🚨 Urgente']]));\n      break;\n    }\n    case 'sop_pri': {\n      if (!PRIORIDAD[c]) { say.push(buttons('Elige la urgencia con un botón:', [['p0', 'Normal'], ['p1', 'Alta'], ['p2', '🚨 Urgente']])); break; }\n      s.sop.pri = c;\n      let partner = null;\n      if (odoo.enabled) {\n        try { partner = await odoo.findPartner(m.from); } catch (e) { wa.logError('odoo:findPartner', e); }\n      }\n      if (partner || !odoo.enabled) { s.step = 'start'; return crearTicket(m, s, ctx, wa, odoo, partner); }\n      s.step = 'sop_emp';\n      say.push(txt('Es la primera vez que nos escribes desde este número 🙂 ¿De qué *empresa o negocio* nos escribes? (Si es personal, escribe tu nombre completo.)'));\n      break;\n    }\n    case 'sop_emp': {\n      if (t.length < 2) { say.push(txt('¿Nombre de la empresa o negocio?')); break; }\n      let partner = null;\n      try { partner = await odoo.createPartner(cut(m.text, 80), m.from, m.name); } catch (e) { wa.logError('odoo:createPartner', e); }\n      s.step = 'start';\n      return crearTicket(m, s, ctx, wa, odoo, partner, m.text);\n    }\n    case 'cot_area': {\n      const a = CLI.areas.find(([id]) => c === `area_${id}`);\n      if (!a) { say.push(list('Elige una opción de la lista 👇', 'Ver servicios', CLI.areas.map(([id, n, d]) => [`area_${id}`, n, d]), 'Servicios')); break; }\n      s.cot = { area: a[1] };\n      s.step = 'cot_desc';\n      say.push(txt(`*${a[1]}* 👍 Cuéntanos en un mensaje qué necesitas: tamaño del negocio, número de sucursales o equipos, y si tienes fecha en mente.`));\n      break;\n    }\n    case 'cot_desc': {\n      if (t.length < 8) { say.push(txt('Cuéntanos un poco más para cotizar bien 🙂')); break; }\n      notify.push({ subject: `💼 Cotización por WhatsApp: ${s.cot.area} · ${m.name || prettyPhone(m.from)}`,\n        text: `Solicitud de cotización desde el WhatsApp de NodOpera.\\n\\nServicio: ${s.cot.area}\\nCliente: ${m.name}\\nWhatsApp: https://wa.me/${m.from}\\n\\nDetalle:\\n${m.text}` });\n      await forwardToAdmin(ctx, wa, env, { ...m, text: `[Cotización · ${s.cot.area}] ${m.text}` }, '💼');\n      s.step = 'start';\n      say.push(volver('¡Gracias! 🙌 Recibimos tu solicitud. Te enviamos una propuesta en máximo 1 día hábil. Si quieres adelantar detalles, toca *Hablar con Ulises*.'));\n      break;\n    }\n    default:\n      say.push(cliMenu(m.name, ctx.now));\n  }\n  return { say, notify };\n}\n\nasync function crearTicket(m, s, ctx, wa, odoo, partner, empresa) {\n  const say = [];\n  const notify = [];\n  const [pri, priLabel] = PRIORIDAD[s.sop.pri] || PRIORIDAD.p0;\n  const descripcion = `<p>${esc(s.sop.desc).replace(/\\n/g, '<br/>')}</p><p><b>Reportado por WhatsApp</b>: ${esc(m.name || '')} · +${m.from}${s.sop.media ? '<br/>Incluye foto (ver WhatsApp).' : ''}</p>`;\n  let ticket = null;\n  if (partner) {\n    try {\n      ticket = await odoo.createTicket({ partner, asunto: s.sop.desc.split('\\n')[0], descripcion, prioridad: pri });\n    } catch (e) { wa.logError('odoo:createTicket', e); }\n  }\n  notify.push({\n    subject: `🛠️ ${ticket ? ticket.number : 'Ticket SIN registrar'} · ${priLabel} · ${partner?.name || empresa || m.name || prettyPhone(m.from)}`,\n    text: `${ticket ? `Ticket ${ticket.number} creado en el portal.` : '⚠️ No se pudo crear en Odoo: regístralo a mano.'}\\n\\nPrioridad: ${priLabel}\\nCliente: ${partner?.name || empresa || '(desconocido)'}\\nContacto: ${m.name}\\nWhatsApp: https://wa.me/${m.from}\\n\\nProblema:\\n${s.sop.desc}`,\n  });\n  await forwardToAdmin(ctx, wa, ctx.env, { ...m, text: `[${ticket?.number || 'Ticket'} · ${priLabel}] ${s.sop.desc}` }, '🛠️');\n  if (ticket) {\n    say.push(volver(`✅ Ticket *${ticket.number}* registrado con prioridad *${priLabel}*.\\n\\nYa avisamos al equipo; te contactamos por aquí. Seguimiento en ${CLI.portal}`));\n  } else {\n    say.push(volver(`✅ Recibimos tu reporte con prioridad *${priLabel}*. Ulises ya fue notificado y te confirma el folio en breve.`));\n  }\n  if (pri === '2' && !enHorario(ctx.now)) say.push(txt('🚨 Como es urgente y estamos fuera de horario, también puedes llamar al 33 2248 8131.'));\n  s.sop = {};\n  return { say, notify };\n}\n\nasync function estadoTickets(m, odoo, ctx) {\n  if (!odoo.enabled) return volver('Por ahora consulta tus tickets en ' + CLI.portal);\n  try {\n    const partner = await odoo.findPartner(m.from);\n    if (!partner) return volver('No encontré tickets ligados a este número 🤔 Si ya eres cliente, pide a Ulises que registre este WhatsApp en tu cuenta.');\n    const tks = await odoo.openTickets(partner);\n    if (!tks.length) return volver(`No tienes tickets abiertos, *${partner.name}* 🎉`);\n    const lines = tks.map((k) => `• *${k.number}* · ${cut(k.name, 40)}\\n   ${ESTADOS[k.state] || k.state}`);\n    return volver(`🔎 Tickets abiertos de *${partner.name}*:\\n\\n${lines.join('\\n')}\\n\\nDetalle en ${CLI.portal}`);\n  } catch (e) {\n    return volver('No pude consultar el portal en este momento 😓 Intenta en unos minutos o escribe a Ulises.');\n  }\n}\n\nasync function handleWebhook(body, ctx) {\n  const env = ctx.env;\n  const wa = makeWA({ token: env.WA_TOKEN, phoneId: env.CLIENTES_PHONE_ID, version: env.WA_GRAPH_VERSION, monthlyLimit: 0 }, ctx);\n  const odoo = makeOdoo(env, ctx);\n  const st = ctx.state;\n  const notify = [];\n\n  for (const m of parseIncoming(body)) {\n    if (m.phoneNumberId && env.CLIENTES_PHONE_ID && m.phoneNumberId !== String(env.CLIENTES_PHONE_ID)) continue;\n    if (seenBefore(st, m.id)) continue;\n    if (m.ts && ctx.now - m.ts > 30 * 60e3) continue;\n    await wa.read(m.id);\n\n    if (env.ADMIN_WA && last10(m.from) === last10(env.ADMIN_WA)) {\n      // Ulises desde su celular: respuestas (deslizar) y comandos \"/\" son de administrador; texto normal = prueba el bot como cliente\n      if (m.contextId || (m.text || '').startsWith('/')) { await adminCommand(m, ctx, wa, env); continue; }\n    }\n    if (rateLimited(st, m.from, ctx.now, CLI.maxPorDia)) continue;\n\n    const s = getSession(st, m.from, ctx.now, CLI.ttlMin);\n    let r;\n    if (['sticker', 'reaction', 'unsupported'].includes(m.type)) continue;\n    if (m.type === 'audio' && !(st.human?.[m.from] > +ctx.now)) {\n      r = { say: [volver('Todavía no puedo escuchar audios 🙈 ¿Me lo escribes? O toca *Hablar con Ulises*.')], notify: [] };\n    } else {\n      r = await clienteStep(m, s, ctx, wa, odoo, env);\n    }\n    for (const p of r.say) await wa.send(m.from, p);\n    notify.push(...r.notify);\n  }\n  return notify;\n}\n\n\n// ---- Adaptador n8n: no editar ----\nconst _items = $input.all();\nconst _cfg = _items[0]?.json?.cfg || {};\nconst _helpers = this.helpers;\nconst ctx = {\n  env: _cfg,\n  state: $getWorkflowStaticData('global'),\n  now: new Date(),\n  http: async (o) => {\n    if (_helpers && typeof _helpers.httpRequest === 'function') return _helpers.httpRequest(o);\n    const r = await fetch(o.url, { method: o.method, headers: { 'Content-Type': 'application/json', ...(o.headers || {}) }, body: JSON.stringify(o.body) });\n    const data = await r.json().catch(() => ({}));\n    if (!r.ok) { const e = new Error('HTTP ' + r.status); e.response = { body: data }; throw e; }\n    return data;\n  },\n};\nconst _notify = [];\nfor (const it of _items) {\n  try { _notify.push(...await handleWebhook(it.json.body, ctx)); }\n  catch (e) {\n    ctx.state.errors = [{ at: ctx.now.toISOString(), where: 'handleWebhook', detail: String(e && e.stack || e) }, ...(ctx.state.errors || [])].slice(0, 30);\n  }\n}\nreturn _notify.map((n) => ({ json: { ...n, to: _cfg.NOTIFY_TO, from: _cfg.NOTIFY_FROM } }));\n"
+      }
+    },
+    {
+      "id": "311d84b9-f8d0-4797-8989-532983342bc0",
+      "name": "Avisar a Ulises (correo)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        720,
+        220
+      ],
+      "parameters": {
+        "fromEmail": "={{ $json.from }}",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $json.text }}",
+        "options": {}
+      },
+      "credentials": {
+        "smtp": {
+          "id": "smtpNodOpera0001",
+          "name": "SMTP Gmail NodOpera"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Meta verifica (GET)": {
+      "main": [
+        [
+          {
+            "node": "Responder challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mensaje entrante (POST)": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Bot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bot": {
+      "main": [
+        [
+          {
+            "node": "Avisar a Ulises (correo)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Mexico_City",
+    "saveDataSuccessExecution": "none"
+  },
+  "active": false,
+  "pinData": {}
+}
