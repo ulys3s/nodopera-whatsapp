@@ -39,11 +39,13 @@ trap 'rm -f "$TMP"; $C exec -T n8n rm -f /tmp/cred.json >/dev/null 2>&1 || true'
 printf '[{"id":"smtpNodOpera0001","name":"SMTP Gmail NodOpera","type":"smtp","data":{"user":"%s","password":"%s","host":"smtp.gmail.com","port":465,"secure":true}}]' \
   "$GMAIL_USER" "$GMAIL_APP_PASSWORD" > "$TMP"
 $C cp "$TMP" n8n:/tmp/cred.json
-$C exec -T n8n n8n import:credentials --input=/tmp/cred.json
+# n8n puede seguir migrando su base justo después de /healthz: reintentar
+reintentar() { for i in 1 2 3 4 5; do "$@" && return 0; echo "  reintento $i…"; sleep 6; done; return 1; }
+reintentar $C exec -T n8n n8n import:credentials --input=/tmp/cred.json
 
 # 4) workflow del bot (mismo id: reemplaza la versión anterior) y publicarlo
-$C exec -T n8n n8n import:workflow --input=/import/workflows/bot-demo.json
-$C exec -T n8n n8n publish:workflow --id=nodoperaBotDemo1
+reintentar $C exec -T n8n n8n import:workflow --input=/import/workflows/bot-demo.json
+reintentar $C exec -T n8n n8n publish:workflow --id=nodoperaBotDemo1
 $C restart n8n >/dev/null
 
 RUTA=$(python3 -c "import json;print(json.load(open('paths.json'))['demo'])")
