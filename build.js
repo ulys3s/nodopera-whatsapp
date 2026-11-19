@@ -9,6 +9,7 @@ const paths = fs.existsSync(cfgFile) ? JSON.parse(fs.readFileSync(cfgFile, 'utf8
   demo: 'wa-demo-' + crypto.randomBytes(5).toString('hex'),
   clientes: 'wa-clientes-' + crypto.randomBytes(5).toString('hex'),
 };
+if (!paths.diagnostico) paths.diagnostico = 'diag-' + crypto.randomBytes(5).toString('hex');
 fs.writeFileSync(cfgFile, JSON.stringify(paths, null, 2));
 
 const WRAPPER = `
@@ -91,5 +92,68 @@ function workflow(kind, title, file) {
   };
 }
 fs.writeFileSync(path.join(__dirname, 'n8n/workflows/bot-demo.json'), JSON.stringify(workflow('demo', 'NodOpera · Bot DEMO WhatsApp', 'demo.js'), null, 2));
+
+// ---------------- Diagnóstico NodOpera (nodopera.com/diagnostico/) ----------------
+const DIAG_ENV = ['ANTHROPIC_API_KEY', 'DIAG_MODEL', 'TURNSTILE_SECRET', 'DIAG_MONTHLY_LIMIT', 'ODOO_URL', 'ODOO_DB', 'ODOO_USER', 'ODOO_API_KEY'];
+const DIAG_WRAPPER = `
+// ---- Adaptador n8n: no editar ----
+// Secretos SOLO desde $env (.env del contenedor). Siempre devuelve UNA respuesta para "Responder".
+const _E = $env;
+const _helpers = this.helpers;
+const ctx = {
+  env: Object.fromEntries(ENV_KEYS.map((k) => [k, _E[k]])),
+  state: $getWorkflowStaticData('global'),
+  now: new Date(),
+  http: (o) => _helpers.httpRequest(o),
+};
+const _it = $input.first().json;
+const _h = _it.headers || {};
+const _origin = String(_h.origin || '');
+let _out;
+try {
+  _out = await handleDiagnostico({ method: 'POST', origin: _origin, ip: String(_h['cf-connecting-ip'] || ''),
+    body: _it.body, bytes: Buffer.byteLength(JSON.stringify(_it.body || '')) }, ctx);
+} catch (e) {
+  ctx.state.errors = [{ at: ctx.now.toISOString(), where: 'handleDiagnostico', detail: String(e && e.message || e).slice(0, 300) }, ...(ctx.state.errors || [])].slice(0, 30);
+  _out = { status: 500, body: { ok: false, error: 'interno' }, notify: [] };
+}
+const _cors = DIAG.origins.includes(_origin) ? _origin : DIAG.origins[0];
+return [{ json: { status: _out.status, body: _out.body, cors: _cors,
+  notify: (_out.notify || []).map((n) => ({ ...n, to: _E.NOTIFY_TO, from: _E.NOTIFY_FROM })) } }];
+`;
+function diagWorkflow() {
+  const prompt = read('prompt-diagnostico.md').trim();
+  const code = '// Diagnóstico NodOpera · generado por build.js desde src/core.js + src/diagnostico.js + src/prompt-diagnostico.md\n'
+    + read('core.js') + '\nconst PROMPT_DIAGNOSTICO = ' + JSON.stringify(prompt) + ';\n' + read('diagnostico.js') + '\n'
+    + DIAG_WRAPPER.replace('ENV_KEYS', JSON.stringify(DIAG_ENV));
+  return {
+    id: 'nodoperaDiagnostico1',
+    name: 'NodOpera · Diagnóstico (nodopera.com/diagnostico)',
+    nodes: [
+      { id: crypto.randomUUID(), name: 'Diagnóstico (POST)', type: 'n8n-nodes-base.webhook', typeVersion: 2, position: [0, 0], webhookId: crypto.randomUUID(),
+        parameters: { httpMethod: 'POST', path: paths.diagnostico, responseMode: 'responseNode', options: { allowedOrigins: 'https://nodopera.com,https://www.nodopera.com' } } },
+      { id: crypto.randomUUID(), name: 'Diagnóstico', type: 'n8n-nodes-base.code', typeVersion: 2, position: [240, 0], parameters: { jsCode: code } },
+      { id: crypto.randomUUID(), name: 'Responder', type: 'n8n-nodes-base.respondToWebhook', typeVersion: 1.1, position: [480, 0],
+        parameters: { respondWith: 'json', responseBody: '={{ JSON.stringify($json.body) }}',
+          options: { responseCode: '={{ $json.status }}', responseHeaders: { entries: [{ name: 'Cache-Control', value: 'no-store' }, { name: 'Vary', value: 'Origin' }] } } } },
+      { id: crypto.randomUUID(), name: 'Solo correos', type: 'n8n-nodes-base.code', typeVersion: 2, position: [720, 0],
+        parameters: { jsCode: 'return $input.all().flatMap((i) => (i.json.notify || []).filter((n) => n.to && n.from).map((n) => ({ json: n })));' } },
+      { id: crypto.randomUUID(), name: 'Avisar a Ulises (correo)', type: 'n8n-nodes-base.emailSend', typeVersion: 2.1, position: [960, 0], onError: 'continueRegularOutput',
+        parameters: { fromEmail: '={{ $json.from }}', toEmail: '={{ $json.to }}', subject: '={{ $json.subject }}', emailFormat: 'text', text: '={{ $json.text }}', options: {} },
+        credentials: { smtp: { id: 'smtpNodOpera0001', name: 'SMTP Gmail NodOpera' } } },
+    ],
+    connections: {
+      'Diagnóstico (POST)': { main: [[{ node: 'Diagnóstico', type: 'main', index: 0 }]] },
+      'Diagnóstico': { main: [[{ node: 'Responder', type: 'main', index: 0 }]] },
+      Responder: { main: [[{ node: 'Solo correos', type: 'main', index: 0 }]] },
+      'Solo correos': { main: [[{ node: 'Avisar a Ulises (correo)', type: 'main', index: 0 }]] },
+    },
+    settings: { executionOrder: 'v1', timezone: 'America/Mexico_City', saveDataSuccessExecution: 'none' },
+    active: false,
+    pinData: {},
+  };
+}
+fs.writeFileSync(path.join(__dirname, 'n8n/workflows/diagnostico.json'), JSON.stringify(diagWorkflow(), null, 2));
+
 console.log('Listo. Rutas de webhook:', paths);
-module.exports = { WRAPPER };
+module.exports = { WRAPPER, DIAG_WRAPPER };

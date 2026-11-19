@@ -183,3 +183,31 @@ n8n/paths.json            ruta secreta del webhook
 n8n/workflows/bot-demo.json  workflow listo para importar
 extras/bot-clientes/      bot de soporte con tickets de Odoo (programado, no se usa por ahora)
 ```
+
+---
+
+## Diagnóstico NodOpera (nodopera.com/diagnostico/)
+
+Herramienta gratis para captar pymes: el visitante contesta 10 preguntas (y opcionalmente sube su Excel,
+que se procesa **en su navegador** y nunca se sube), deja sus datos y recibe un reporte con 3 hallazgos,
+3 mejoras y el servicio de NodOpera que aplica. A ti te llega un correo "Nuevo diagnóstico DX-AAAA-NNNN – Empresa".
+
+```
+nodopera.com/diagnostico/ ──POST JSON (respuestas + resumen agregado + token Turnstile)──►
+  wa.nodopera.com/webhook/diag-32990aa3fd  (única regla extra del túnel; lo demás 404)
+      ▼
+  n8n · workflow "NodOpera · Diagnóstico" (id nodoperaDiagnostico1)
+      ├─ valida Origin, tamaño, Turnstile (siteverify) y esquema  → 403 / 400
+      ├─ límites: 2 por correo cada 30 días · 5 por IP al día · DIAG_MONTHLY_LIMIT al mes → 429 "te contactamos"
+      ├─ API de Claude (DIAG_MODEL, system = src/prompt-diagnostico.md) → JSON validado; 1 reintento; si no, respaldo genérico
+      ├─ responde { folio, reporte } a la página
+      └─ correo a NOTIFY_TO (+ crm.lead en Odoo si hay ODOO_* en .env)
+```
+
+**Llaves en `n8n/.env` (nunca en git ni en el chat):** `ANTHROPIC_API_KEY`, `TURNSTILE_SECRET`
+(la *site key* es pública y va en la página), opcional `ODOO_URL`, `ODOO_DB`, `ODOO_USER`, `ODOO_API_KEY`.
+Después de pegarlas: `./instalar.sh` (recrea el contenedor para que n8n las lea).
+
+**Pruebas:** `node build.js && node test/diag.js` (Claude y Turnstile simulados: OK, sin Excel, Turnstile inválido,
+Origin ajeno, cuerpo gigante, JSON de Claude inválido → respaldo y límites).
+
