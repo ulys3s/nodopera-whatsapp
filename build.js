@@ -94,7 +94,7 @@ function workflow(kind, title, file) {
 fs.writeFileSync(path.join(__dirname, 'n8n/workflows/bot-demo.json'), JSON.stringify(workflow('demo', 'NodOpera · Bot DEMO WhatsApp', 'demo.js'), null, 2));
 
 // ---------------- Diagnóstico NodOpera (nodopera.com/diagnostico/) ----------------
-const DIAG_ENV = ['ANTHROPIC_API_KEY', 'DIAG_MODEL', 'TURNSTILE_SECRET', 'DIAG_MONTHLY_LIMIT', 'ODOO_URL', 'ODOO_DB', 'ODOO_USER', 'ODOO_API_KEY'];
+const DIAG_ENV = ['DIAG_MODO', 'ANTHROPIC_API_KEY', 'DIAG_MODEL', 'TURNSTILE_SECRET', 'DIAG_MONTHLY_LIMIT', 'ODOO_URL', 'ODOO_DB', 'ODOO_USER', 'ODOO_API_KEY'];
 const DIAG_WRAPPER = `
 // ---- Adaptador n8n: no editar ----
 // Secretos SOLO desde $env (.env del contenedor). Siempre devuelve UNA respuesta para "Responder".
@@ -123,8 +123,8 @@ return [{ json: { status: _out.status, body: _out.body, cors: _cors,
 `;
 function diagWorkflow() {
   const prompt = read('prompt-diagnostico.md').trim();
-  const code = '// Diagnóstico NodOpera · generado por build.js desde src/core.js + src/diagnostico.js + src/prompt-diagnostico.md\n'
-    + read('core.js') + '\nconst PROMPT_DIAGNOSTICO = ' + JSON.stringify(prompt) + ';\n' + read('diagnostico.js') + '\n'
+  const code = '// Diagnóstico NodOpera · generado por build.js desde src/core.js + src/reglas-diagnostico.js + src/diagnostico.js + src/prompt-diagnostico.md\n'
+    + read('core.js') + '\nconst PROMPT_DIAGNOSTICO = ' + JSON.stringify(prompt) + ';\n' + read('reglas-diagnostico.js') + '\n' + read('diagnostico.js') + '\n'
     + DIAG_WRAPPER.replace('ENV_KEYS', JSON.stringify(DIAG_ENV));
   return {
     id: 'nodoperaDiagnostico1',

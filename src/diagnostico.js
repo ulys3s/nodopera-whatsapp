@@ -99,28 +99,9 @@ function extraerJSON(t) {
   try { return JSON.parse(t.slice(a, z + 1)); } catch (e) { return null; }
 }
 
-/** Reporte genérico cuando la API falla dos veces o no hay llave. No inventa cifras. */
+/** Si la IA está activa pero falla dos veces (o no hay llave), se usa el motor de reglas. */
 function reporteRespaldo(d) {
-  const r = d.respuestas;
-  const manual = /papel|nada|excel/i.test(r.registro);
-  return {
-    resumen: `Gracias por contarnos cómo opera ${d.contacto.empresa}. Con tus respuestas vemos oportunidades claras para ordenar la información de ventas e inventario y ahorrar tiempo en tareas repetitivas; en la llamada las aterrizamos a tu caso.`,
-    madurez: manual ? { nivel: 2, etiqueta: 'Básico', explicacion: 'Parte de la operación depende de registros manuales u hojas sueltas.' }
-      : { nivel: 3, etiqueta: 'Ordenado', explicacion: 'Ya tienes un sistema, pero todavía hay pasos que se hacen a mano.' },
-    hallazgos: [
-      { titulo: 'Información repartida en varias herramientas', detalle: `Hoy llevas ventas e inventario en: ${r.registro}. Cuando los datos viven en lugares distintos, cuadrar cifras toma tiempo.`, evidencia: `Registro: ${r.registro}` },
-      { titulo: 'Tareas repetitivas que consumen la semana', detalle: r.tarea ? `Mencionaste: "${r.tarea.slice(0, 160)}". Es candidata a automatizarse.` : 'No nos contaste qué tarea te quita más tiempo; lo vemos en la llamada.', evidencia: 'Tarea que más tiempo quita' },
-      { titulo: 'Cobranza y facturación por revisar', detalle: `Facturas con: ${r.facturacion}. Cobras así: ${r.cobranza}. Conectar ambas cosas evita olvidos y retrasos.`, evidencia: 'Facturación y cobranza' },
-    ],
-    mejoras: [
-      { titulo: 'Centralizar ventas e inventario', que_hacer: 'Concentrar ventas, inventario y facturación en un solo sistema (Odoo) con tus datos actuales migrados.', beneficio: 'Un solo dato confiable para decidir.', impacto: 'alto', esfuerzo: 'medio', servicio: 'Odoo Systems' },
-      { titulo: 'Automatizar la tarea más pesada', que_hacer: 'Revisar paso a paso la tarea que más tiempo te quita y automatizar las partes repetitivas (avisos, capturas, reportes).', beneficio: 'Horas libres cada semana para tu equipo.', impacto: 'medio', esfuerzo: 'bajo', servicio: 'Automatización e IA' },
-      { titulo: 'Tablero con tus indicadores clave', que_hacer: 'Un tablero que muestre ventas, cobranza e inventario actualizados sin armar reportes a mano.', beneficio: 'Ver cómo va el negocio en minutos.', impacto: 'medio', esfuerzo: 'medio', servicio: 'Intelligence (tableros)' },
-    ],
-    primer_paso: 'Haz una lista de los reportes que armas cada semana y cuánto tiempo te toma cada uno; es el punto de partida para la llamada.',
-    preguntas_para_llamada: ['¿Qué reporte te gustaría tener cada lunes sin armarlo a mano?', '¿Cuántas personas capturan ventas o inventario hoy?'],
-    respaldo: true,
-  };
+  return { ...reporteReglas(d), respaldo: true };
 }
 
 async function pedirReporte(d, ctx) {
@@ -187,7 +168,7 @@ function textoCorreo(d, folio, rep, extra) {
   l.push('— Respuestas —', `Giro: ${r.giro}`, `Sucursales: ${r.sucursales} · Empleados: ${r.empleados}`, `Venden: ${r.canales.join(', ')}`,
     `Registro: ${r.registro}`, `Facturación: ${r.facturacion}`, `Cobranza: ${r.cobranza}`, `Tarea que más tiempo quita: ${r.tarea || '—'}`, `Quiere saber: ${r.saber || '—'}`,
     `Excel: ${d.resumen_excel ? 'sí (resumen agregado)' : 'no'}`, '');
-  l.push('— Reporte' + (rep.respaldo ? ' (RESPALDO GENÉRICO: la API falló)' : '') + ' —', rep.resumen, `Madurez: ${rep.madurez.nivel} · ${rep.madurez.etiqueta}`, '');
+  l.push('— Reporte' + (rep.respaldo ? ' (motor de reglas: la IA falló o no tiene llave)' : rep.motor === 'reglas' ? ' (motor de reglas, sin IA)' : ' (IA)') + ' —', rep.resumen, `Madurez: ${rep.madurez.nivel} · ${rep.madurez.etiqueta}`, '');
   rep.hallazgos.forEach((h, i) => l.push(`Hallazgo ${i + 1}: ${h.titulo} — ${h.detalle}`));
   rep.mejoras.forEach((m, i) => l.push(`Mejora ${i + 1}: ${m.titulo} [${m.servicio} · impacto ${m.impacto} · esfuerzo ${m.esfuerzo}] — ${m.que_hacer}`));
   l.push('', `Primer paso: ${rep.primer_paso}`, 'Preguntas para la llamada:', ...rep.preguntas_para_llamada.map((q) => '• ' + q));
@@ -248,9 +229,17 @@ async function handleDiagnostico(req, ctx) {
   const folioDX = `DX-${anio}-${String(D.folios[anio]).padStart(4, '0')}`;
 
   // ---- reporte ----
-  const p = await pedirReporte(d, ctx);
-  let rep = p.reporte;
-  if (!rep) { anotarError(st, now, 'claude', p.error); rep = reporteRespaldo(d); }
+  // Por defecto SIN IA: motor de reglas propio (src/reglas-diagnostico.js), sin costo y determinista.
+  // Con DIAG_MODO=ia se usa la API de Claude y, si falla, el motor de reglas como respaldo.
+  let rep;
+  if (String(ctx.env.DIAG_MODO || 'reglas').toLowerCase() === 'ia') {
+    const p = await pedirReporte(d, ctx);
+    rep = p.reporte;
+    if (!rep) { anotarError(st, now, 'claude', p.error); rep = reporteRespaldo(d); }
+  } else {
+    rep = reporteReglas(d);
+    if (!reporteValido(rep)) { anotarError(st, now, 'reglas', 'El motor de reglas produjo un reporte fuera de esquema'); }
+  }
 
   st.historial = [{ folio: folioDX, fecha: now.toISOString(), empresa: d.contacto.empresa, correo: d.contacto.correo, giro: d.respuestas.giro, respaldo: !!rep.respaldo },
     ...(st.historial || [])].slice(0, DIAG.historial);

@@ -14,8 +14,9 @@ if [ ! -f .env ]; then
   echo "Creé $(pwd)/.env con llaves aleatorias."
 fi
 # Variables del Diagnóstico NodOpera: se agregan vacías si faltan (las llaves las pega Ulises; nunca van al chat ni a git)
-for v in ANTHROPIC_API_KEY DIAG_MODEL TURNSTILE_SECRET DIAG_MONTHLY_LIMIT; do
+for v in DIAG_MODO ANTHROPIC_API_KEY DIAG_MODEL TURNSTILE_SECRET DIAG_MONTHLY_LIMIT; do
   grep -q "^$v=" .env || case $v in
+    DIAG_MODO) echo "DIAG_MODO=reglas   # reglas (sin IA, sin costo) | ia (API de Claude)" >> .env ;;
     DIAG_MODEL) echo "DIAG_MODEL=claude-sonnet-5-5" >> .env ;;
     DIAG_MONTHLY_LIMIT) echo "DIAG_MONTHLY_LIMIT=300" >> .env ;;
     *) echo "$v=" >> .env ;;
@@ -58,9 +59,12 @@ reintentar $C exec -T n8n n8n publish:workflow --id=nodoperaBotDemo1
 # 5) Diagnóstico NodOpera (nodopera.com/diagnostico/)
 reintentar $C exec -T n8n n8n import:workflow --input=/import/workflows/diagnostico.json
 reintentar $C exec -T n8n n8n publish:workflow --id=nodoperaDiagnostico1
-for v in ANTHROPIC_API_KEY TURNSTILE_SECRET; do
-  [ -n "${!v:-}" ] || echo "⚠️  Falta $v en $(pwd)/.env: el diagnóstico $( [ $v = TURNSTILE_SECRET ] && echo 'RECHAZA todo (403)' || echo 'responde un reporte genérico de respaldo')."
-done
+[ -n "${TURNSTILE_SECRET:-}" ] || echo "⚠️  Falta TURNSTILE_SECRET en $(pwd)/.env: el diagnóstico RECHAZA todo (403)."
+if [ "${DIAG_MODO:-reglas}" = ia ]; then
+  [ -n "${ANTHROPIC_API_KEY:-}" ] || echo "⚠️  DIAG_MODO=ia sin ANTHROPIC_API_KEY: los reportes salen con el motor de reglas."
+else
+  echo "ℹ️  Diagnóstico en modo reglas (sin IA y sin costo). Para usar la API de Claude: DIAG_MODO=ia y ANTHROPIC_API_KEY en .env."
+fi
 $C up -d --force-recreate n8n >/dev/null   # recarga el .env (las variables nuevas no llegan con un simple restart)
 echo -n "Esperando a n8n"; for i in $(seq 1 60); do curl -fs http://127.0.0.1:5678/healthz >/dev/null && break; echo -n .; sleep 2; done; echo
 

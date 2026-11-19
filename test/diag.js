@@ -19,7 +19,7 @@ const BUENO = {
 };
 
 function runner(envExtra = {}, claude = () => ({ content: [{ type: 'text', text: JSON.stringify(BUENO) }], stop_reason: 'end_turn' })) {
-  const env = { ANTHROPIC_API_KEY: 'sk-test', TURNSTILE_SECRET: 'ts-secret', NOTIFY_TO: 'u@x', NOTIFY_FROM: 'b@x', ...envExtra };
+  const env = { DIAG_MODO: 'ia', ANTHROPIC_API_KEY: 'sk-test', TURNSTILE_SECRET: 'ts-secret', NOTIFY_TO: 'u@x', NOTIFY_FROM: 'b@x', ...envExtra };
   const state = {};
   const calls = { claude: 0, turnstile: 0, odoo: [] };
   async function httpRequest(o) {
@@ -118,7 +118,7 @@ const body = (o = {}) => ({
   t = runner({}, () => ({ content: [{ type: 'text', text: 'Claro, aquí está tu diagnóstico: {"resumen": "x"}' }], stop_reason: 'end_turn' }));
   r = await t.call(body());
   assert.equal(r.status, 200); assert.equal(t.calls.claude, 2); assert.equal(r.body.reporte.respaldo, true);
-  assert(t.state.errors[0].where === 'claude'); assert(r.notify[0].text.includes('RESPALDO'));
+  assert(t.state.errors[0].where === 'claude'); assert(r.notify[0].text.includes('motor de reglas'));
   // primer intento malo, segundo bueno (con ```json)
   t = runner({}, (i) => ({ content: [{ type: 'text', text: i === 1 ? 'nada' : '```json\n' + JSON.stringify(BUENO) + '\n```' }] }));
   r = await t.call(body()); assert.equal(r.status, 200); assert.equal(t.calls.claude, 2); assert(!r.body.reporte.respaldo);
@@ -132,7 +132,7 @@ const body = (o = {}) => ({
     t = runner({}, () => ({ content: [{ type: 'text', text: JSON.stringify(malo) }] }));
     r = await t.call(body()); assert.equal(r.body.reporte.respaldo, true);
   }
-  console.log('✔ JSON de Claude inválido: reintenta una vez y responde el respaldo genérico (también con API caída o sin llave)');
+  console.log('✔ Modo IA: JSON de Claude inválido → reintenta una vez y responde con el motor de reglas (también con API caída o sin llave)');
 
   // 7) Límites: 2 por correo cada 30 días, 5 por IP al día, tope mensual con aviso una sola vez
   t = runner();
@@ -162,6 +162,44 @@ const body = (o = {}) => ({
   assert(/^DX-\d{4}-0001$/.test(f1) && /^DX-\d{4}-0002$/.test(f2));
   assert.deepEqual(Object.keys(t.state.historial[0]).sort(), ['correo', 'empresa', 'fecha', 'folio', 'giro', 'respaldo']);
   console.log('✔ Folios consecutivos', f1, f2, '· historial sin datos de más');
+
+  // 9) MODO POR DEFECTO: motor de reglas, SIN IA (sin llamadas a la API, sin llave)
+  const sinIA = (o = {}) => runner({ DIAG_MODO: undefined, ANTHROPIC_API_KEY: '', ...o }, () => { throw new Error('no debe llamar a la IA'); });
+  t = sinIA();
+  r = await t.call(body());
+  assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(t.calls.claude, 0); assert.equal(r.body.reporte.motor, 'reglas');
+  assert(!t.state.errors, JSON.stringify(t.state.errors));
+  assert(r.notify[0].text.includes('motor de reglas, sin IA'));
+  console.log('✔ Sin IA por defecto:', r.body.reporte.madurez.etiqueta, '·', r.body.reporte.hallazgos.map((x) => x.titulo).join(' | '));
+  // con Excel: los hallazgos citan las cifras del resumen
+  const xl = { filas_analizadas: 3010, ventas_totales: 1254123, ticket_promedio: 1252.87, periodo: '2026-03 a 2026-11', productos_distintos: 40,
+    ventas_por_mes: [['2026-03', 158052], ['2026-04', 148769], ['2026-05', 162311], ['2026-06', 166827], ['2026-07', 159584], ['2026-08', 129200], ['2026-09', 116820], ['2026-10', 110525], ['2026-11', 32035]],
+    ventas_por_sucursal: [['Zapopan', 636256], ['Centro', 416357], ['Tlaquepaque', 201510]], margen_bruto_pct: 17.5, margen_base: 'sobre 100% de las ventas con costo',
+    top_productos: [{ producto: 'Cemento 50 kg', importe: 300000, cantidad: 900 }, { producto: 'Varilla 3/8', importe: 200000, cantidad: 500 }, { producto: 'Block', importe: 100000, cantidad: 4000 }],
+    sin_movimiento: { criterio: 'con existencia y sin ventas en los últimos 90 días del archivo', total: 10, ejemplos: ['Producto G1', 'Producto G2', 'Producto G3'] },
+    stock_critico: { criterio: 'agotado o con menos de 7 días de venta', total: 9, ejemplos: ['Producto E5'] } };
+  r = await t.call(body({ resumen_excel: xl }));
+  const txt = JSON.stringify(r.body.reporte);
+  assert(txt.includes('10 productos sin movimiento'), txt); assert(txt.includes('Producto G1'));
+  assert(r.body.reporte.hallazgos.length === 3 && r.body.reporte.mejoras.length === 3);
+  console.log('✔ Sin IA con Excel: cita sus cifras →', r.body.reporte.hallazgos.map((x) => x.titulo).join(' | '));
+  // barrido de combinaciones: siempre 3 + 3, esquema válido y, sin Excel, ninguna cifra en pesos
+  const OP = { registro: ['Papel o libreta', 'Excel', 'Sistema propio', 'ERP (Odoo, SAP, Aspel u otro)', 'No lo llevamos'],
+    canales: [['Mostrador'], ['WhatsApp'], ['A crédito', 'Mostrador'], ['En línea', 'WhatsApp', 'A crédito']],
+    facturacion: ['Portal gratuito del SAT', 'Programa de facturación (Aspel)', 'Desde nuestro sistema o ERP', 'Lo hace el contador', 'No facturamos'],
+    cobranza: ['Todo es de contado', 'Libreta o Excel', 'Con un sistema', 'No hay seguimiento formal'],
+    tarea: ['', 'Cuadrar el inventario de las sucursales cada viernes', 'Hacer facturas una por una', 'Perseguir a los clientes que deben', 'El internet se cae y la compu está lenta', 'Pasar los pedidos de WhatsApp al Excel'],
+    sucursales: ['1', '2 a 3', 'Más de 10'] };
+  let n2 = 0;
+  for (const registro of OP.registro) for (const canales of OP.canales) for (const facturacion of OP.facturacion) for (const cobranza of OP.cobranza) for (const tarea of OP.tarea) {
+    const sucursales = OP.sucursales[n2 % 3];
+    t = sinIA();
+    r = await t.call(body({ resumen_excel: undefined, respuestas: { ...body().respuestas, registro, canales, facturacion, cobranza, tarea, sucursales, saber: n2 % 2 ? 'Cuánto gano por producto' : '' } }), { ip: '5.5.' + (n2 % 250) + '.1' });
+    assert.equal(r.status, 200); assert(!t.state.errors, registro + ' ' + JSON.stringify(t.state.errors));
+    assert(!/\$\s?\d/.test(JSON.stringify(r.body.reporte)), 'cifra en pesos sin Excel');
+    n2++;
+  }
+  console.log(`✔ Motor de reglas: ${n2} combinaciones de respuestas, todas con 3 hallazgos, 3 mejoras, esquema válido y sin cifras inventadas`);
 
   console.log('\nTODAS LAS PRUEBAS PASARON ✅');
 })().catch((e) => { console.error('❌', e); process.exit(1); });

@@ -199,12 +199,13 @@ nodopera.com/diagnostico/ ──POST JSON (respuestas + resumen agregado + token
   n8n · workflow "NodOpera · Diagnóstico" (id nodoperaDiagnostico1)
       ├─ valida Origin, tamaño, Turnstile (siteverify) y esquema  → 403 / 400
       ├─ límites: 2 por correo cada 30 días · 5 por IP al día · DIAG_MONTHLY_LIMIT al mes → 429 "te contactamos"
-      ├─ API de Claude (DIAG_MODEL, system = src/prompt-diagnostico.md) → JSON validado; 1 reintento; si no, respaldo genérico
+      ├─ motor de reglas sin IA (src/reglas-diagnostico.js) → 3 hallazgos y 3 mejoras con las cifras del Excel
+      │     (opcional DIAG_MODO=ia: API de Claude con src/prompt-diagnostico.md; si falla, motor de reglas)
       ├─ responde { folio, reporte } a la página
       └─ correo a NOTIFY_TO (+ crm.lead en Odoo si hay ODOO_* en .env)
 ```
 
-**Llaves en `n8n/.env` (nunca en git ni en el chat):** `ANTHROPIC_API_KEY`, `TURNSTILE_SECRET`
+**Llaves en `n8n/.env` (nunca en git ni en el chat):** `TURNSTILE_SECRET` (obligatoria), `ANTHROPIC_API_KEY` solo con `DIAG_MODO=ia`
 (la *site key* es pública y va en la página), opcional `ODOO_URL`, `ODOO_DB`, `ODOO_USER`, `ODOO_API_KEY`.
 Después de pegarlas: `./instalar.sh` (recrea el contenedor para que n8n las lea).
 
