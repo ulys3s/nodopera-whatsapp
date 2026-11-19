@@ -59,6 +59,9 @@ reintentar $C exec -T n8n n8n publish:workflow --id=nodoperaBotDemo1
 # 5) Diagnóstico NodOpera (nodopera.com/diagnostico/)
 reintentar $C exec -T n8n n8n import:workflow --input=/import/workflows/diagnostico.json
 reintentar $C exec -T n8n n8n publish:workflow --id=nodoperaDiagnostico1
+# 6) Dudas NodOpera (nodopera.com/dudas/): contesta con reglas y avisa por correo
+reintentar $C exec -T n8n n8n import:workflow --input=/import/workflows/dudas.json
+reintentar $C exec -T n8n n8n publish:workflow --id=nodoperaDudas1
 [ -n "${TURNSTILE_SECRET:-}" ] || echo "⚠️  Falta TURNSTILE_SECRET en $(pwd)/.env: el diagnóstico RECHAZA todo (403)."
 if [ "${DIAG_MODO:-reglas}" = ia ]; then
   [ -n "${ANTHROPIC_API_KEY:-}" ] || echo "⚠️  DIAG_MODO=ia sin ANTHROPIC_API_KEY: los reportes salen con el motor de reglas."
@@ -79,3 +82,7 @@ echo
 echo "✅ Diagnóstico NodOpera instalado."
 echo "   URL pública (la usa nodopera.com/diagnostico/): https://wa.nodopera.com/webhook/$DIAG"
 echo "   Prueba local: curl -s -o /dev/null -w '%{http_code}\\n' -X POST -H 'Origin: https://nodopera.com' -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:5678/webhook/$DIAG  → 400"
+DUDAS=$(python3 -c "import json;print(json.load(open('paths.json'))['dudas'])")
+echo
+echo "✅ Dudas NodOpera instalado."
+echo "   URL pública (la usa nodopera.com/dudas/): https://wa.nodopera.com/webhook/$DUDAS"

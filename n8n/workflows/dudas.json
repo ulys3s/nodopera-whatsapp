@@ -1,0 +1,158 @@
+{
+  "id": "nodoperaDudas1",
+  "name": "NodOpera · Dudas (nodopera.com/dudas)",
+  "active": false,
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Mexico_City",
+    "saveDataSuccessExecution": "none"
+  },
+  "nodes": [
+    {
+      "id": "eefc3f99-4109-46fc-bf56-709bd38f0cb6",
+      "name": "Duda (POST)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "bbdc4e16-38a8-42ab-b9c9-c7a1dd9bbe2e",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dudas-80cf3c471d",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://nodopera.com,https://www.nodopera.com"
+        }
+      }
+    },
+    {
+      "id": "de980f7c-9677-452f-8945-828dc25fbc7b",
+      "name": "Contestar duda",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Dudas NodOpera · contesta preguntas de nodopera.com/dudas/ con reglas (sin IA, sin costo) y avisa a Ulises.\n// Función pura: handleDuda(req, ctx) → { status, body, notify[] }. Turnstile solo se llama por ctx.http.\nconst DUDAS = {\n  origins: ['https://nodopera.com', 'https://www.nodopera.com'],\n  maxBytes: 4 * 1024,\n  porIpHora: 8,\n  porDia: 150,\n  historial: 300,\n};\nconst WA_LINK = 'https://wa.me/523322488131?text=';\n\n// Base de respuestas: solo lo que el sitio ya publica (chat.js y /dudas/). k = palabras clave sin acentos.\nconst BASE = [\n  { id: 'servicios', k: ['que hacen', 'a que se dedican', 'servicio', 'servicios', 'que ofrecen', 'ofrecen', 'ayudan'],\n    r: 'Somos el área de TI de tu pyme sin que tengas que contratarla: soporte e infraestructura de TI con iguala mensual, cámaras y control de acceso, ERP y CRM a tu medida con automatización, y análisis de tus números con tableros.', l: 'https://nodopera.com/#servicios' },\n  { id: 'precios', k: ['precio', 'precios', 'cuanto cuesta', 'cuanto cobran', 'costo', 'cotiza', 'cotizacion', 'tarifa', 'mensualidad', 'plan', 'planes', 'iguala', 'esencial', 'pro', 'total'],\n    r: 'Hay tres planes con cuota mensual fija y horas del equipo incluidas: Esencial (hasta 5 equipos), Pro (hasta 15) y Total (hasta 30). Los precios vigentes están en la sección Planes, y los proyectos se cotizan aparte con precio cerrado.', l: 'https://nodopera.com/#planes' },\n  { id: 'cobertura', k: ['donde', 'ciudad', 'estado', 'cdmx', 'guadalajara', 'monterrey', 'queretaro', 'puebla', 'en sitio', 'presencial', 'remoto', 'a domicilio', 'atienden en', 'foraneo', 'ubicacion'],\n    r: 'Trabajamos con empresas en todo México de forma remota. Hay atención presencial en la CDMX y en la Zona Metropolitana de Guadalajara; en otras ciudades, si hace falta ir, la visita se agenda.' },\n  { id: 'como', k: ['como trabajan', 'como funciona', 'proceso', 'pasos', 'empezar', 'contratar', 'primer paso', 'como le hago'],\n    r: 'Trabajamos en cuatro pasos: diagnóstico, propuesta con alcance y precio claros, puesta en orden de lo crítico y operación con soporte continuo y reporte mensual.' },\n  { id: 'diagnostico', k: ['diagnostico', 'evaluacion', 'auditoria', 'revision', 'gratis', '10 preguntas'],\n    r: 'El diagnóstico gratis en línea son 10 preguntas en unos 5 minutos: recibes en pantalla tus 3 cuellos de botella, 3 mejoras y, si eliges tu archivo de ventas, un tablero con tus números. Tu archivo no se sube: se lee en tu navegador.', l: 'https://nodopera.com/diagnostico/' },\n  { id: 'tiempos', k: ['cuanto tardan', 'tiempo de respuesta', 'que tan rapido', 'urgencia', 'urgente', 'emergencia', 'horario', 'sla', 'tardan'],\n    r: 'Los mensajes del sitio, WhatsApp o correo se contestan en menos de un día hábil. En los planes Pro y Total, las fallas críticas tienen respuesta remota en 30 minutos de lunes a sábado de 7:00 a 21:00; los tiempos de visita quedan por escrito en el contrato.' },\n  { id: 'migracion', k: ['migrar', 'migracion', 'pasar mis datos', 'desde excel', 'sistema anterior', 'importar', 'aspel', 'contpaq', 'cambiar de sistema'],\n    r: 'Sí hacemos migraciones desde Excel o tu sistema anterior: limpiamos y validamos la información, respaldamos todo antes de empezar y tu sistema anterior sigue disponible hasta que los datos cuadren.' },\n  { id: 'erp', k: ['erp', 'crm', 'inventario', 'punto de venta', 'facturacion', 'facturar', 'sistema administrativo', 'compras', 'software'],\n    r: 'Montamos tu ERP y CRM a tu medida y con tus datos: ventas, inventario, compras, facturación electrónica, punto de venta y seguimiento de clientes en un solo sistema. Una pyme suele arrancar en 4 a 12 semanas.' },\n  { id: 'camaras', k: ['camara', 'camaras', 'cctv', 'videovigilancia', 'control de acceso', 'acceso', 'checador', 'cableado'],\n    r: 'Instalamos y damos mantenimiento a cámaras, control de acceso y cableado, y revisamos periódicamente que graben. La instalación se cotiza como proyecto con precio cerrado.', l: 'https://nodopera.com/servicios/cctv-control-acceso.html' },\n  { id: 'soporte', k: ['soporte', 'tecnico', 'computadora', 'compu', 'laptop', 'impresora', 'red', 'wifi', 'internet', 'servidor', 'virus', 'respaldo', 'respaldos', 'mantenimiento'],\n    r: 'Con la iguala de soporte tienes quien atienda tus equipos, red, servidores y respaldos, remoto o en sitio, con mantenimiento preventivo, monitoreo y un reporte cada mes.', l: 'https://nodopera.com/servicios/soporte-ti.html' },\n  { id: 'automatizacion', k: ['automatizar', 'automatizacion', 'bot', 'bots', 'whatsapp', 'n8n', 'integrar', 'integracion', 'ia', 'inteligencia artificial'],\n    r: 'Automatizamos tareas repetitivas e integramos tus sistemas (por ejemplo, recordatorios de cobranza o capturas que hoy se hacen a mano), y hacemos bots de WhatsApp y asistentes con IA que conocen tu negocio.' },\n  { id: 'web', k: ['pagina web', 'paginas web', 'sitio web', 'tienda en linea', 'landing', 'dominio'],\n    r: 'Sí hacemos páginas web como proyecto con precio cerrado; el alcance y los tiempos quedan por escrito antes de empezar.' },\n  { id: 'datos', k: ['tablero', 'dashboard', 'reporte', 'reportes', 'finanzas', 'margen', 'cuanto gano', 'indicadores', 'numeros'],\n    r: 'Ordenamos tus números para que veas cuánto ganas de verdad, con un tablero que se actualiza y un reporte mensual para decidir con datos.', l: 'https://nodopera.com/servicios/analisis-de-datos-y-finanzas.html' },\n  { id: 'tengo_tecnico', k: ['ya tengo tecnico', 'tengo un tecnico', 'mi tecnico', 'tengo sistemas', 'area de ti'],\n    r: 'Podemos trabajar con tu técnico: nos encargamos de la documentación, los respaldos y los proveedores, y tu técnico atiende el día a día.' },\n];\n\nconst R = (status, body, notify = []) => ({ status, body, notify });\nconst norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9ñ@. ]+/g, ' ').replace(/\\s+/g, ' ').trim();\nfunction str(v, max, min = 0) {\n  if (typeof v !== 'string') return null;\n  const s = v.replace(/[\\u0000-\\u001f\\u007f]/g, ' ').trim();\n  return s.length >= min && s.length <= max ? s : null;\n}\n\n/** Mejor respuesta por palabras clave (frases largas pesan más). null si nada coincide. */\nfunction buscar(pregunta) {\n  const q = ' ' + norm(pregunta) + ' ';\n  let mejor = null, pts = 0;\n  for (const x of BASE) {\n    let p = 0;\n    for (const k of x.k) if (q.includes(' ' + k + ' ') || (k.includes(' ') && q.includes(k))) p += k.split(' ').length * 2 + (k.length > 6 ? 1 : 0);\n    if (p > pts) { pts = p; mejor = x; }\n  }\n  return pts >= 2 ? mejor : null;\n}\n\nasync function turnstileValido(token, ip, ctx) {\n  const secret = ctx.env.TURNSTILE_SECRET;\n  if (!secret || typeof token !== 'string' || token.length < 10 || token.length > 4096) return false;\n  try {\n    const form = 'secret=' + encodeURIComponent(secret) + '&response=' + encodeURIComponent(token) + (ip ? '&remoteip=' + encodeURIComponent(ip) : '');\n    const r = await ctx.http({ method: 'POST', url: 'https://challenges.cloudflare.com/turnstile/v0/siteverify', body: form, json: true, timeout: 15000,\n      headers: { 'content-type': 'application/x-www-form-urlencoded' } });\n    const o = typeof r === 'string' ? JSON.parse(r) : r;\n    return !!(o && o.success === true);\n  } catch (e) { return false; }\n}\n\nasync function handleDuda(req, ctx) {\n  if (req.method !== 'POST') return R(405, { ok: false, error: 'metodo' });\n  if (!DUDAS.origins.includes(req.origin)) return R(403, { ok: false, error: 'origen' });\n  if (req.bytes > DUDAS.maxBytes) return R(413, { ok: false, error: 'tamano' });\n  const b = req.body && typeof req.body === 'object' ? req.body : {};\n  const pregunta = str(b.pregunta, 300, 3);\n  const nombre = b.nombre ? str(b.nombre, 80) : '';\n  const contacto = b.contacto ? str(b.contacto, 120) : '';\n  if (!pregunta || nombre === null || contacto === null) return R(400, { ok: false, error: 'datos' });\n  const tel = contacto.replace(/\\D/g, '').replace(/^52(?=\\d{10}$)/, '');\n  const esCorreo = /^[^\\s@]+@[^\\s@]+\\.[a-z]{2,}$/i.test(contacto);\n  if (contacto && !esCorreo && tel.length !== 10) return R(400, { ok: false, error: 'contacto', mensaje: 'Escribe un correo o un WhatsApp de 10 dígitos (o déjalo vacío).' });\n\n  // Límites antes de llamar a Turnstile (no gastar en abuso)\n  const st = ctx.state, t = ctx.now.getTime(), dia = ctx.now.toISOString().slice(0, 10);\n  st.ips = st.ips || {};\n  for (const k of Object.keys(st.ips)) { st.ips[k] = st.ips[k].filter((x) => t - x < 3600e3); if (!st.ips[k].length) delete st.ips[k]; }\n  if (st.dia !== dia) { st.dia = dia; st.hoy = 0; }\n  if ((req.ip && (st.ips[req.ip] || []).length >= DUDAS.porIpHora) || st.hoy >= DUDAS.porDia)\n    return R(429, { ok: false, error: 'limite', mensaje: 'Recibimos muchas preguntas seguidas. Escríbenos por WhatsApp y te contestamos.' });\n  if (!(await turnstileValido(b.turnstile, req.ip, ctx))) return R(403, { ok: false, error: 'turnstile' });\n  if (req.ip) (st.ips[req.ip] = st.ips[req.ip] || []).push(t);\n  st.hoy++;\n\n  const x = buscar(pregunta);\n  const contactoTxt = esCorreo ? contacto : (tel ? tel.replace(/(\\d{2})(\\d{4})(\\d{4})/, '$1 $2 $3') : '');\n  const escalado = !x || !!contacto;\n  let respuesta = x ? x.r : 'Buena pregunta. No la tengo en mis respuestas automáticas, así que se la pasé a una persona del equipo.';\n  if (escalado && contactoTxt) respuesta += ` Te escribimos a ${contactoTxt} en menos de un día hábil.`;\n  else if (!x) respuesta += ' Si nos dejas tu correo o WhatsApp te contestamos en menos de un día hábil, o escríbenos directo por WhatsApp.';\n  const folio = 'DU-' + dia.replace(/-/g, '').slice(2) + '-' + String(st.hoy).padStart(3, '0');\n  st.historial = [{ folio, fecha: ctx.now.toISOString(), pregunta, tema: x ? x.id : null, contacto: !!contacto }, ...(st.historial || [])].slice(0, DUDAS.historial);\n\n  const notify = escalado ? [{\n    subject: `Duda ${folio}${x ? '' : ' SIN RESPUESTA'} – ${pregunta.slice(0, 60)}`,\n    text: `Pregunta desde ${req.pagina || 'nodopera.com/dudas/'}:\\n\\n${pregunta}\\n\\n` +\n      `Nombre: ${nombre || '(no lo dejó)'}\\nContacto: ${contactoTxt || '(no lo dejó)'}` +\n      (tel && !esCorreo ? `\\nWhatsApp: https://wa.me/52${tel}` : '') +\n      `\\n\\nRespuesta automática: ${x ? `[${x.id}] ${x.r}` : '(ninguna: hay que contestar a mano)'}\\n\\nFolio ${folio}`,\n  }] : [];\n  return R(200, { ok: true, folio, respuesta, enlace: x && x.l || '', escalado,\n    whatsapp: WA_LINK + encodeURIComponent('Hola NodOpera, tengo una duda (' + folio + '): ' + pregunta) }, notify);\n}\n\n// ---- Adaptador n8n ----\nconst _E = $env;\nconst _helpers = this.helpers;\nconst ctx = {\n  env: { TURNSTILE_SECRET: _E.TURNSTILE_SECRET },\n  state: $getWorkflowStaticData('global'),\n  now: new Date(),\n  http: (o) => _helpers.httpRequest(o),\n};\nconst _it = $input.first().json;\nconst _h = _it.headers || {};\nconst _origin = String(_h.origin || '');\nlet _out;\ntry {\n  _out = await handleDuda({ method: 'POST', origin: _origin, ip: String(_h['cf-connecting-ip'] || ''), pagina: String(_h.referer || '').slice(0, 120),\n    body: _it.body, bytes: Buffer.byteLength(JSON.stringify(_it.body || '')) }, ctx);\n} catch (e) {\n  ctx.state.errors = [{ at: ctx.now.toISOString(), detail: String(e && e.message || e).slice(0, 300) }, ...(ctx.state.errors || [])].slice(0, 30);\n  _out = { status: 500, body: { ok: false, error: 'interno' }, notify: [] };\n}\nreturn [{ json: { status: _out.status, body: _out.body,\n  notify: (_out.notify || []).map((n) => ({ ...n, to: _E.NOTIFY_TO, from: _E.NOTIFY_FROM })) } }];\n"
+      }
+    },
+    {
+      "id": "10080453-671e-4fbf-86c2-f90aef88768f",
+      "name": "Responder",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "responseCode": "={{ $json.status }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              },
+              {
+                "name": "Vary",
+                "value": "Origin"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "03fee242-a605-4bd2-a886-6bb80911e0ab",
+      "name": "Solo correos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().flatMap((i) => (i.json.notify || []).filter((n) => n.to && n.from).map((n) => ({ json: n })));"
+      }
+    },
+    {
+      "id": "e5bb8316-d91b-48cc-9ec2-17ed30fa8b12",
+      "name": "Avisar a Ulises (correo)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        960,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "fromEmail": "={{ $json.from }}",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $json.text }}",
+        "options": {}
+      },
+      "credentials": {
+        "smtp": {
+          "id": "smtpNodOpera0001",
+          "name": "SMTP Gmail NodOpera"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Duda (POST)": {
+      "main": [
+        [
+          {
+            "node": "Contestar duda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contestar duda": {
+      "main": [
+        [
+          {
+            "node": "Responder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responder": {
+      "main": [
+        [
+          {
+            "node": "Solo correos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Solo correos": {
+      "main": [
+        [
+          {
+            "node": "Avisar a Ulises (correo)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
