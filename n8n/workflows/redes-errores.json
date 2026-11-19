@@ -1,0 +1,185 @@
+{
+  "id": "nodoperaRedesErr1",
+  "name": "NodOpera · Errores del publicador de redes",
+  "active": false,
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Mexico_City"
+  },
+  "nodes": [
+    {
+      "id": "b1",
+      "name": "Error en el publicador",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "b2",
+      "name": "Leer hoy.json",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "fileSelector": "/data/publicador/hoy.json",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b3",
+      "name": "Extraer JSON",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "operation": "fromJson",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b4",
+      "name": "Armar error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const err = $('Error en el publicador').first().json;\nconst d = $json.data ?? $json;\nconst hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());\nconst msg = String(err.execution?.error?.message || 'Error desconocido').slice(0, 500);\nconst id = d && d.id ? d.id : 'sin-id-' + Date.now();\nreturn [{ json: { id, fecha: hoy, estado: 'error', ids: {}, errores: { n8n: `${err.execution?.lastNodeExecuted || ''}: ${msg}` },\n  aviso: `NodOpera · redes ${hoy} · ${id} → ERROR\\n${err.execution?.lastNodeExecuted || ''}: ${msg}\\nEjecución: ${err.execution?.id || ''}` } }];"
+      }
+    },
+    {
+      "id": "b5",
+      "name": "A archivo",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        -100
+      ],
+      "parameters": {
+        "operation": "toJson",
+        "mode": "each",
+        "options": {
+          "fileName": "resultado.json"
+        }
+      }
+    },
+    {
+      "id": "b6",
+      "name": "Guardar resultado",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        -100
+      ],
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/data/publicador/resultado-{{ $('Armar error').item.json.id }}.json",
+        "options": {}
+      }
+    },
+    {
+      "id": "b7",
+      "name": "Avisar a Ulises (correo)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        880,
+        100
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "smtp": {
+          "id": "smtpNodOpera0001",
+          "name": "SMTP Gmail NodOpera"
+        }
+      },
+      "parameters": {
+        "fromEmail": "={{ $env.NOTIFY_FROM || $env.GMAIL_USER }}",
+        "toEmail": "={{ $env.NOTIFY_TO }}",
+        "subject": "={{ 'NodOpera redes · ERROR · ' + $json.fecha }}",
+        "emailFormat": "text",
+        "text": "={{ $json.aviso }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Error en el publicador": {
+      "main": [
+        [
+          {
+            "node": "Leer hoy.json",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer hoy.json": {
+      "main": [
+        [
+          {
+            "node": "Extraer JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer JSON": {
+      "main": [
+        [
+          {
+            "node": "Armar error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar error": {
+      "main": [
+        [
+          {
+            "node": "A archivo",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Avisar a Ulises (correo)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A archivo": {
+      "main": [
+        [
+          {
+            "node": "Guardar resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

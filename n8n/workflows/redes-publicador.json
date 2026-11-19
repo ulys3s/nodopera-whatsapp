@@ -1,0 +1,216 @@
+{
+  "id": "nodoperaRedesPub1",
+  "name": "NodOpera · Publicador de redes (L-V 9:00)",
+  "active": false,
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Mexico_City",
+    "errorWorkflow": "nodoperaRedesErr1",
+    "saveDataSuccessExecution": "all"
+  },
+  "nodes": [
+    {
+      "id": "a1",
+      "name": "Lunes a viernes 9:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a0",
+      "name": "Probar a mano",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        160
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a2",
+      "name": "Leer hoy.json",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "fileSelector": "/data/publicador/hoy.json",
+        "options": {}
+      }
+    },
+    {
+      "id": "a3",
+      "name": "Extraer JSON",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "operation": "fromJson",
+        "options": {}
+      }
+    },
+    {
+      "id": "a4",
+      "name": "Publicar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// NodOpera · Publicador de redes (n8n Code node). Fuente de workflows/redes-publicador.json (se arma con: node redes/armar.js)\n// Lee /data/publicador/hoy.json (lo deja preparar.mjs en Windows a las 8:40) y publica lo mismo en Facebook, Instagram y LinkedIn.\n// Tokens SOLO en el .env de n8n: META_TOKEN (system user nodopera-bot) y LINKEDIN_TOKEN. Si falta uno, esa red se omite.\n// REDES_MODO=publicar (default) | borrador → Facebook sin publicar (published=false), Instagram crea el contenedor sin media_publish.\nconst E = $env;\nconst http = (o) => this.helpers.httpRequest(o);\nconst d = $json.data ?? $json;\nconst hoy = new Intl.DateTimeFormat(\"en-CA\", { timeZone: \"America/Mexico_City\" }).format(new Date());\nconst estado = $getWorkflowStaticData(\"global\");\n\nif (!d || !d.ok) return [];                       // preparar.mjs ya dejó el error en cola.json\nif (d.fecha !== hoy) return [];                   // no se preparó hoy: no se publica nada viejo\nif (estado.ultimo === d.id + \"@\" + hoy) return []; // ya corrió hoy con este item\n\nconst MODO = (E.REDES_MODO || \"publicar\").trim().toLowerCase();\nconst PUBLICAR = MODO === \"publicar\";\nconst G = `https://graph.facebook.com/${E.META_GRAPH_VERSION || \"v23.0\"}`;\nconst PAGE_ID = E.FB_PAGE_ID || \"1411767948692962\";\nconst ORG = `urn:li:organization:${E.LINKEDIN_ORG_ID || \"144103410\"}`;\nconst texto = d.texto, imgs = d.imagenes;\nconst textoIG = d.texto_instagram || texto; // preparar.mjs: \"+ info: link en la bio\" en vez del enlace\nconst espera = (ms) => new Promise((r) => setTimeout(r, ms));\nconst secretos = [E.META_TOKEN, E.LINKEDIN_TOKEN].filter(Boolean);\nconst limpio = (e) => {\n  let m = (e && (e.response?.body?.error?.message || e.response?.body?.message || e.description || e.message)) || String(e);\n  for (const s of secretos) m = m.split(s).join(\"***\");\n  return m.slice(0, 500);\n};\n\n// ---- Facebook (página) ----\nasync function facebook(pageToken) {\n  const post = (url, body) => http({ method: \"POST\", url, body: { ...body, access_token: pageToken }, json: true });\n  if (imgs.length === 1) {\n    const r = await post(`${G}/${PAGE_ID}/photos`, { url: imgs[0], caption: texto, published: PUBLICAR });\n    return r.post_id || r.id;\n  }\n  const fotos = [];\n  for (const u of imgs) fotos.push((await post(`${G}/${PAGE_ID}/photos`, { url: u, published: false })).id);\n  const r = await post(`${G}/${PAGE_ID}/feed`, { message: texto, attached_media: fotos.map((id) => ({ media_fbid: id })), published: PUBLICAR });\n  return r.id;\n}\n\n// ---- Instagram (@nodopera.mx) ----\nasync function instagram(igId) {\n  const crear = (b) => http({ method: \"POST\", url: `${G}/${igId}/media`, body: { ...b, access_token: E.META_TOKEN }, json: true }).then((r) => r.id);\n  let cid;\n  if (imgs.length === 1) cid = await crear({ image_url: imgs[0], caption: textoIG });\n  else {\n    const hijos = [];\n    for (const u of imgs) hijos.push(await crear({ image_url: u, is_carousel_item: true }));\n    cid = await crear({ media_type: \"CAROUSEL\", children: hijos.join(\",\"), caption: textoIG });\n  }\n  for (let i = 0; i < 20; i++) {\n    const s = await http({ url: `${G}/${cid}`, qs: { fields: \"status_code\", access_token: E.META_TOKEN }, json: true });\n    if (s.status_code === \"FINISHED\") break;\n    if (s.status_code === \"ERROR\" || s.status_code === \"EXPIRED\") throw new Error(`Instagram no procesó las imágenes (${s.status_code})`);\n    await espera(3000);\n  }\n  if (!PUBLICAR) return \"contenedor:\" + cid;\n  return (await http({ method: \"POST\", url: `${G}/${igId}/media_publish`, body: { creation_id: cid, access_token: E.META_TOKEN }, json: true })).id;\n}\n\n// ---- LinkedIn (página de empresa; requiere la Community Management API aprobada) ----\n// \"little text\": hay que escapar estos caracteres o LinkedIn corta el texto (el # se deja para que sigan siendo hashtags)\nconst escLi = (t) => t.replace(/[\\\\|{}@\\[\\]()<>*_~]/g, (c) => \"\\\\\" + c);\nasync function linkedin() {\n  if (!PUBLICAR) throw new Error(\"modo borrador: LinkedIn no tiene borradores por API, no se envió\");\n  const H = { Authorization: `Bearer ${E.LINKEDIN_TOKEN}`, \"LinkedIn-Version\": E.LINKEDIN_VERSION || \"202509\", \"X-Restli-Protocol-Version\": \"2.0.0\" };\n  const urns = [];\n  for (const u of imgs) {\n    const ini = await http({ method: \"POST\", url: \"https://api.linkedin.com/rest/images?action=initializeUpload\", headers: H, body: { initializeUploadRequest: { owner: ORG } }, json: true });\n    const bin = await http({ url: u, encoding: \"arraybuffer\", json: false });\n    await http({ method: \"PUT\", url: ini.value.uploadUrl, headers: { Authorization: H.Authorization, \"Content-Type\": \"application/octet-stream\" }, body: Buffer.from(bin), json: false });\n    urns.push(ini.value.image);\n  }\n  const content = urns.length === 1 ? { media: { id: urns[0] } } : { multiImage: { images: urns.map((id) => ({ id })) } };\n  const r = await http({\n    method: \"POST\", url: \"https://api.linkedin.com/rest/posts\", headers: H, json: true, returnFullResponse: true,\n    body: { author: ORG, commentary: escLi(texto), visibility: \"PUBLIC\", lifecycleState: \"PUBLISHED\", isReshareDisabledByAuthor: false,\n      distribution: { feedDistribution: \"MAIN_FEED\", targetEntities: [], thirdPartyDistributionChannels: [] }, content },\n  });\n  return r.headers[\"x-restli-id\"] || r.headers[\"x-linkedin-id\"] || \"ok\";\n}\n\nconst ids = {}, errores = {}, omitidas = {};\nif (E.META_TOKEN) {\n  let pagina = null;\n  try {\n    pagina = await http({ url: `${G}/${PAGE_ID}`, qs: { fields: \"access_token,instagram_business_account\", access_token: E.META_TOKEN }, json: true });\n  } catch (e) { errores.meta = \"No pude leer la página con META_TOKEN: \" + limpio(e); }\n  if (pagina) {\n    try { ids.facebook = await facebook(pagina.access_token); } catch (e) { errores.facebook = limpio(e); }\n    const ig = E.IG_USER_ID || pagina.instagram_business_account?.id || \"17841461732637167\";\n    if (!ig) errores.instagram = \"La página no tiene Instagram conectado (o el token no tiene instagram_basic)\";\n    else { try { ids.instagram = await instagram(ig); } catch (e) { errores.instagram = limpio(e); } }\n  }\n} else omitidas.facebook = omitidas.instagram = \"Falta META_TOKEN en el .env de n8n\";\nif (E.LINKEDIN_TOKEN) { try { ids.linkedin = await linkedin(); } catch (e) { errores.linkedin = limpio(e); } }\nelse omitidas.linkedin = \"Falta LINKEDIN_TOKEN: publicar a mano desde Chrome con el texto de hoy.json\";\n\nestado.ultimo = d.id + \"@\" + hoy;\nconst algo = Object.keys(ids).length > 0;\nconst r = {\n  id: d.id, fecha: hoy, modo: MODO,\n  estado: !algo ? (Object.keys(errores).length ? \"error\" : \"preparado\") : Object.keys(errores).length ? \"parcial\" : (PUBLICAR ? \"publicado\" : \"borrador\"),\n  ids, errores, omitidas,\n  ...(!algo && !Object.keys(errores).length ? { nota: \"Sin tokens: no se publicó en ninguna red\" } : {}),\n};\nr.aviso = [\n  `NodOpera · redes ${hoy} · ${d.id} → ${r.estado.toUpperCase()} (modo ${MODO})`,\n  ...Object.entries(ids).map(([k, v]) => `✅ ${k}: ${v}`),\n  ...Object.entries(errores).map(([k, v]) => `❌ ${k}: ${v}`),\n  ...Object.entries(omitidas).map(([k, v]) => `⏭️ ${k}: ${v}`),\n  \"\", \"Texto:\", texto, \"\", \"Imágenes:\", ...imgs,\n].join(\"\\n\");\nreturn [{ json: r }];\n"
+      }
+    },
+    {
+      "id": "a5",
+      "name": "A archivo",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        -100
+      ],
+      "parameters": {
+        "operation": "toJson",
+        "mode": "each",
+        "options": {
+          "fileName": "resultado.json"
+        }
+      }
+    },
+    {
+      "id": "a6",
+      "name": "Guardar resultado",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        -100
+      ],
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/data/publicador/resultado-{{ $('Publicar').item.json.id }}.json",
+        "options": {}
+      }
+    },
+    {
+      "id": "a7",
+      "name": "Avisar a Ulises (correo)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        880,
+        100
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "smtp": {
+          "id": "smtpNodOpera0001",
+          "name": "SMTP Gmail NodOpera"
+        }
+      },
+      "parameters": {
+        "fromEmail": "={{ $env.NOTIFY_FROM || $env.GMAIL_USER }}",
+        "toEmail": "={{ $env.NOTIFY_TO }}",
+        "subject": "={{ 'NodOpera redes · ' + $json.fecha + ' · ' + $json.estado }}",
+        "emailFormat": "text",
+        "text": "={{ $json.aviso }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Lunes a viernes 9:00": {
+      "main": [
+        [
+          {
+            "node": "Leer hoy.json",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer hoy.json": {
+      "main": [
+        [
+          {
+            "node": "Extraer JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer JSON": {
+      "main": [
+        [
+          {
+            "node": "Publicar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Probar a mano": {
+      "main": [
+        [
+          {
+            "node": "Leer hoy.json",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publicar": {
+      "main": [
+        [
+          {
+            "node": "A archivo",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Avisar a Ulises (correo)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A archivo": {
+      "main": [
+        [
+          {
+            "node": "Guardar resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

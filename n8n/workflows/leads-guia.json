@@ -1,0 +1,88 @@
+{
+  "id": "nodoperaLeadsGuia1",
+  "name": "Leads · Checklist de TI (nodopera.com)",
+  "nodes": [
+    {
+      "id": "6f1d0a2e-1c1b-4d3e-9a51-0b7a3c2f1a01",
+      "name": "Formulario (POST)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "b3c2d1e0-7a6b-4c5d-8e9f-a0b1c2d3e4f5",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "guia-28232e0a5c",
+        "responseMode": "responseNode",
+        "options": { "allowedOrigins": "https://nodopera.com,https://www.nodopera.com" }
+      }
+    },
+    {
+      "id": "6f1d0a2e-1c1b-4d3e-9a51-0b7a3c2f1a02",
+      "name": "Validar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 0],
+      "parameters": {
+        "jsCode": "// Valida el formulario de la guía y arma la fila del CSV. Sin datos válidos no se guarda nada.\nconst b = $json.body || {};\nconst limpia = (v, n) => String(v == null ? '' : v).replace(/[\\r\\n\\t]+/g, ' ').trim().slice(0, n);\nconst nombre = limpia(b.nombre, 80), email = limpia(b.email, 120).toLowerCase(), empresa = limpia(b.empresa, 100), tel = limpia(b.tel, 30);\nconst idioma = b.idioma === 'en' ? 'en' : 'es', pagina = limpia(b.pagina, 120), resultado = limpia(b.resultado, 10);\nconst trampa = limpia(b.web, 50);\nconst valido = !trampa && b.acepto === true && nombre.length >= 2 && /^[^@\\s]+@[^@\\s]+\\.[a-z]{2,}$/i.test(email);\n// Límite simple contra abuso: máximo 60 registros por hora y un correo una vez por día\nconst sd = $getWorkflowStaticData('global');\nconst ahora = Date.now();\nsd.recientes = (sd.recientes || []).filter(r => ahora - r.t < 86400000);\nconst enHora = sd.recientes.filter(r => ahora - r.t < 3600000).length;\nconst repetido = sd.recientes.some(r => r.e === email);\nlet guardar = valido && enHora < 60 && !repetido;\nif (guardar) sd.recientes.push({ t: ahora, e: email });\nconst csv = v => '\"' + String(v).replace(/\"/g, '\"\"').replace(/^[=+\\-@]/, \"'$&\") + '\"';\nconst fecha = new Date().toLocaleString('sv-SE', { timeZone: 'America/Mexico_City' });\nconst linea = [fecha, nombre, email, empresa, tel, resultado, idioma, pagina].map(csv).join(',') + '\\r\\n';\nreturn [{\n  json: { ok: valido, guardar, nombre, email, empresa, tel, resultado, idioma, pagina, fecha,\n    from: $env.NOTIFY_FROM || $env.GMAIL_USER || '', to: $env.NOTIFY_TO || '',\n    subject: 'Nuevo contacto (checklist de TI): ' + nombre + (empresa ? ' · ' + empresa : ''),\n    text: 'Descargó el checklist de TI en nodopera.com\\n\\nNombre: ' + nombre + '\\nCorreo: ' + email + '\\nEmpresa: ' + (empresa || '-') + '\\nTeléfono: ' + (tel || '-') + '\\nResultado: ' + (resultado || '-') + ' de 15\\nIdioma: ' + idioma + '\\nFecha: ' + fecha },\n  binary: { data: { data: Buffer.from(linea, 'utf8').toString('base64'), mimeType: 'text/csv', fileName: 'guia.csv' } }\n}];"
+      }
+    },
+    {
+      "id": "6f1d0a2e-1c1b-4d3e-9a51-0b7a3c2f1a03",
+      "name": "Responder",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [480, -120],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: $json.ok }) }}",
+        "options": { "responseCode": "={{ $json.ok ? 200 : 400 }}" }
+      }
+    },
+    {
+      "id": "6f1d0a2e-1c1b-4d3e-9a51-0b7a3c2f1a04",
+      "name": "Solo nuevos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 100],
+      "parameters": { "jsCode": "return $input.all().filter(i => i.json.guardar);" }
+    },
+    {
+      "id": "6f1d0a2e-1c1b-4d3e-9a51-0b7a3c2f1a05",
+      "name": "Guardar en guia.csv",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [720, 40],
+      "parameters": {
+        "operation": "write",
+        "fileName": "/data/leads/guia.csv",
+        "dataPropertyName": "data",
+        "options": { "append": true }
+      }
+    },
+    {
+      "id": "6f1d0a2e-1c1b-4d3e-9a51-0b7a3c2f1a06",
+      "name": "Avisar a Ulises (correo)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [720, 220],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "fromEmail": "={{ $json.from }}",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $json.text }}",
+        "options": {}
+      },
+      "credentials": { "smtp": { "id": "smtpNodOpera0001", "name": "SMTP Gmail NodOpera" } }
+    }
+  ],
+  "connections": {
+    "Formulario (POST)": { "main": [[{ "node": "Validar", "type": "main", "index": 0 }]] },
+    "Validar": { "main": [[{ "node": "Responder", "type": "main", "index": 0 }, { "node": "Solo nuevos", "type": "main", "index": 0 }]] },
+    "Solo nuevos": { "main": [[{ "node": "Guardar en guia.csv", "type": "main", "index": 0 }, { "node": "Avisar a Ulises (correo)", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "timezone": "America/Mexico_City", "saveDataSuccessExecution": "all" },
+  "active": false,
+  "pinData": {}
+}
