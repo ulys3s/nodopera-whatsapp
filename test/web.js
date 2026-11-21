@@ -28,12 +28,15 @@ function runner(envExtra = {}, mp = {}) {
       calls.odoo = calls.odoo || []; const a = o.body.params.args;
       if (mp.odooFalla) throw new Error('odoo caído');
       if (o.body.params.method === 'login') return { result: 7 };
+      if (a[4] === 'cancel_subscription_from_shop') { calls.cancel = (calls.cancel || []).concat(a[5][0]); return { result: true }; }
       if (a[4] === 'nodopera_member_by_email') { calls.miembro = (calls.miembro || 0) + 1; return { result: !!mp.miembro }; }
       calls.odoo.push(a[5][0]); return { result: { id: 1, number: a[5][0].folio, cuenta_nueva: calls.odoo.length === 1, url: 'https://portal.x/my/servicios/1', crear_clave: 'https://portal.x/web/signup?token=T', recuperar: 'https://portal.x/web/reset_password' } };
     }
     assert.equal(o.headers.Authorization, 'Bearer tok-prueba');
     if (o.url.endsWith('/checkout/preferences')) { calls.pref.push(o); if (mp.prefFalla) throw new Error('500'); return { id: 'PREF-1', init_point: 'https://mp/pref' }; }
     if (o.url.endsWith('/preapproval')) { calls.sub.push(o); return { id: 'SUB-1', init_point: 'https://mp/sub' }; }
+    const ms = /\/preapproval\/([a-z0-9]+)$/.exec(o.url);
+    if (ms && o.method === 'GET') { if (!mp.subs || !mp.subs[ms[1]]) { const e = new Error('404'); e.httpCode = 404; throw e; } return { id: ms[1], ...mp.subs[ms[1]] }; }
     if (o.url.endsWith('/v1/payments') && o.method === 'POST') {
       calls.pay.push(o); assert(o.headers['X-Idempotency-Key']);
       const id = 9000 + calls.pay.length;
@@ -208,6 +211,23 @@ const tarjeta = { payment_method_id: 'visa', token: 'abc123TOKEN', installments:
     assert.equal(OM.calls.pref[0].body.items[0].unit_price, r.body.total); assert(r.notify[0].text.includes('Descuento de miembro: 10%'));
     assert.equal(O.calls.miembro, 1); assert.equal(runner().calls.miembro, undefined);
     console.log('✓ descuento de miembro: 10% solo si Odoo confirma la membresía; sin Odoo o si falla, precio de lista');
+    {
+      const subs = {};
+      const S = runner(OD, { subs });
+      let q = await S.web(pedido({ servicio: 'equipo-ti-mensual', paquete: 'pro' })); assert.equal(q.status, 200); assert.equal(q.body.pago.modo, 'suscripcion');
+      const fol = q.body.folio;
+      subs.abc123 = { external_reference: fol, status: 'authorized' };
+      q = await S.aviso('abc123', { type: 'subscription_preapproval' }); assert.equal(q.status, 200);
+      assert.equal(S.calls.odoo[S.calls.odoo.length - 1].pago, 'paid'); assert.equal(q.notify.length, 2); assert.equal(S.state.web.pedidos[fol].estado, 'Suscripción activa');
+      q = await S.aviso('abc123', { type: 'subscription_preapproval' }); assert.equal(q.notify.length, 0, 'no repite el aviso de pagado');
+      subs.abc123.status = 'cancelled';
+      q = await S.aviso('abc123', { type: 'subscription_preapproval' }); assert.equal(q.status, 200); assert.deepEqual(S.calls.cancel, [fol]); assert(q.notify[0].subject.includes('cancelada'));
+      q = await S.aviso('noexiste9', { type: 'subscription_preapproval' }); assert.equal(q.status, 200); assert.equal(q.body.ignorado, 'no-existe');
+      subs.raro = { external_reference: 'OTRA-COSA', status: 'cancelled' };
+      q = await S.aviso('raro', { type: 'subscription_preapproval' }); assert.equal(q.body.ignorado, 'folio'); assert.equal(S.calls.cancel.length, 1);
+      q = await S.aviso('abc123', { type: 'subscription_preapproval', secreto: 'malo' }); assert.equal(q.status, 401);
+      console.log('✓ suscripciones: autorizada marca pagado en el portal, cancelada lo cancela, firma obligatoria');
+    }
     console.log('✓ rechazos, planes mensuales y modo sin Mercado Pago');
   }
 

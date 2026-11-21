@@ -229,6 +229,59 @@ async function odooMiembro(correo, ctx) {
     return false;
   }
 }
+/** Avisa al portal que una suscripción se canceló (el servicio mensual deja de contar como membresía). Mejor esfuerzo. */
+async function odooCancelaSuscripcion(folio, ctx) {
+  const e = ctx.env;
+  if (!e.ODOO_URL || !e.ODOO_DB || !e.ODOO_USER || !e.ODOO_API_KEY) return false;
+  try {
+    const rpc = async (service, method, args) => {
+      const r = await ctx.http({ method: 'POST', url: e.ODOO_URL.replace(/\/$/, '') + '/jsonrpc', json: true, timeout: 20000,
+        body: { jsonrpc: '2.0', method: 'call', params: { service, method, args } } });
+      if (r && r.error) throw new Error(r.error.data && r.error.data.message || r.error.message);
+      return r && r.result;
+    };
+    const uid = await rpc('common', 'login', [e.ODOO_DB, e.ODOO_USER, e.ODOO_API_KEY]);
+    if (!uid) throw new Error('login Odoo');
+    return (await rpc('object', 'execute_kw', [e.ODOO_DB, uid, e.ODOO_API_KEY, 'nodopera.service', 'cancel_subscription_from_shop', [folio]])) === true;
+  } catch (err) {
+    errW(ctx.state, ctx.now, 'odoo.cancelar', `${folio}: ${String(err && err.message || err)}`);
+    return false;
+  }
+}
+
+/**
+ * Aviso de suscripción (Mercado Pago, tema "Planes y suscripciones"). Se re-consulta a la API:
+ * authorized → el servicio mensual queda pagado en el portal; cancelled → se cancela en el portal; lo demás solo se avisa.
+ */
+async function avisoSuscripcion(dataId, ctx, W) {
+  const st = ctx.state, now = ctx.now;
+  let r;
+  try { r = await ctx.http({ method: 'GET', url: `${WEB.mp}/preapproval/${dataId}`, json: true, timeout: 20000, headers: mpHeaders(ctx) }); }
+  catch (e) {
+    const code = Number(e && (e.httpCode || e.statusCode || (e.response && (e.response.status || e.response.statusCode)))) || 0;
+    if (code === 404 || /\b404\b/.test(String(e && e.message || ''))) return RW(200, { ok: true, ignorado: 'no-existe' });
+    errW(st, now, 'mp.suscripcion', `${dataId}: ${String(e && e.message || e)}`); return RW(500, { ok: false });
+  }
+  const folio = String(r && r.external_reference || ''), estado = String(r && r.status || '');
+  if (!/^NOD-\d{4}-\d{4,6}$/.test(folio)) return RW(200, { ok: true, ignorado: 'folio' });
+  const p = W.pedidos[folio];
+  const notify = [];
+  if (estado === 'authorized') {
+    if (p && p.mensual && !p.avisoPagado) {
+      p.avisoPagado = now.toISOString(); p.estado = 'Suscripción activa'; p.pago = { id: r.id, status: 'approved', metodo: 'suscripción mensual' };
+      await odooServicio(p, ctx, 'paid'); notify.push(...correosPagado(p));
+    }
+  } else if (estado === 'cancelled') {
+    if (p) p.estado = 'Suscripción cancelada';
+    const ok = await odooCancelaSuscripcion(folio, ctx);
+    notify.push({ subject: `Suscripción cancelada ${folio}`, text: `Mercado Pago reporta cancelada la suscripción ${dataId} del folio ${folio}.\nPortal actualizado: ${ok ? 'sí' : 'NO, revísalo a mano en NodOpera Soporte › Servicios'}.` });
+  } else if (estado === 'paused') {
+    if (p) p.estado = 'Suscripción en pausa';
+    notify.push({ subject: `Suscripción en pausa ${folio}`, text: `Mercado Pago reporta en pausa la suscripción ${dataId} del folio ${folio}. Revisa el cobro con el cliente.` });
+  }
+  return RW(200, { ok: true }, notify);
+}
+
 /** Renglones del correo al cliente que lo llevan a su cuenta del portal. */
 function lineasPortal(p) {
   const o = p.portal;
@@ -395,6 +448,7 @@ async function handleMP(req, ctx) {
   if (!_hmacEq(secret, manifest, m.v1)) { W.firmasMalas = (W.firmasMalas || 0) + 1; return RW(401, { ok: false }); }
   const tsMs = Number(m.ts) > 1e12 ? Number(m.ts) : Number(m.ts) * 1000;
   if (!(Math.abs(now.getTime() - tsMs) < 15 * 60000)) return RW(401, { ok: false, error: 'viejo' });
+  if (tipo === 'subscription_preapproval') return ctx.env.MP_ACCESS_TOKEN ? avisoSuscripcion(dataId, ctx, W) : RW(200, { ok: true });
   if (tipo !== 'payment' || !/^\d+$/.test(dataId)) return RW(200, { ok: true, ignorado: tipo });
   if (!ctx.env.MP_ACCESS_TOKEN) return RW(200, { ok: true });
   let r;
