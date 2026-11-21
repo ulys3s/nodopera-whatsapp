@@ -208,6 +208,27 @@ async function odooServicio(p, ctx, pago, payUrl) {
     return null;
   }
 }
+/** Descuento de miembro en la tienda (fracción). Lo decide el servidor: se pregunta a Odoo si ese correo es de un miembro vigente. */
+const DESC_MIEMBRO = 0.10;
+/** ¿El correo pertenece a un miembro vigente (servicio mensual pagado)? Si Odoo no está o falla → false (precio de lista). */
+async function odooMiembro(correo, ctx) {
+  const e = ctx.env;
+  if (!correo || !e.ODOO_URL || !e.ODOO_DB || !e.ODOO_USER || !e.ODOO_API_KEY) return false;
+  try {
+    const rpc = async (service, method, args) => {
+      const r = await ctx.http({ method: 'POST', url: e.ODOO_URL.replace(/\/$/, '') + '/jsonrpc', json: true, timeout: 8000,
+        body: { jsonrpc: '2.0', method: 'call', params: { service, method, args } } });
+      if (r && r.error) throw new Error(r.error.data && r.error.data.message || r.error.message);
+      return r && r.result;
+    };
+    const uid = await rpc('common', 'login', [e.ODOO_DB, e.ODOO_USER, e.ODOO_API_KEY]);
+    if (!uid) throw new Error('login Odoo');
+    return (await rpc('object', 'execute_kw', [e.ODOO_DB, uid, e.ODOO_API_KEY, 'res.partner', 'nodopera_member_by_email', [correo]])) === true;
+  } catch (err) {
+    errW(ctx.state, ctx.now, 'odoo.miembro', String(err && err.message || err));
+    return false;
+  }
+}
 /** Renglones del correo al cliente que lo llevan a su cuenta del portal. */
 function lineasPortal(p) {
   const o = p.portal;
@@ -318,13 +339,16 @@ async function handleWeb(req, ctx) {
 
   const folio = nuevoFolio(W, now, 'NOD');
   const cotizar = pk.precio == null;
-  const total = cotizar ? 0 : redondea(pk.precio * (1 + CATALOGO.iva));
-  const p = { folio, clave: _clave(), fecha: now.toISOString(), slug, paquete: paq, titulo: srv.titulo, paqueteNombre: pk.n, precio: pk.precio, total,
+  // Descuento de miembro: solo en pagos únicos con precio; el precio base SIEMPRE es el del catálogo.
+  const descuento = !cotizar && !pk.mensual && await odooMiembro(c.correo, ctx) ? DESC_MIEMBRO : 0;
+  const precio = cotizar ? null : redondea(pk.precio * (1 - descuento));
+  const total = cotizar ? 0 : redondea(precio * (1 + CATALOGO.iva));
+  const p = { folio, clave: _clave(), fecha: now.toISOString(), slug, paquete: paq, titulo: srv.titulo, paqueteNombre: pk.n, precio, precioLista: pk.precio, descuento, total,
     mensual: !!pk.mensual, cotizar, contacto: c, detalle, cuando, rfc, estado: cotizar ? 'Cotización solicitada' : 'Pendiente de pago' };
   W.pedidos[folio] = p; W.orden.push(folio);
   while (W.orden.length > WEB.pedidos) delete W.pedidos[W.orden.shift()];
 
-  const resp = { ok: true, folio, clave: p.clave, total, cotizar, mensual: p.mensual, pago: null };
+  const resp = { ok: true, folio, clave: p.clave, total, cotizar, mensual: p.mensual, descuento, pago: null };
   if (!cotizar && ctx.env.MP_ACCESS_TOKEN) {
     try {
       if (p.mensual) { const s = await mpSuscripcion(p, ctx); resp.pago = { modo: 'suscripcion', init_point: s.init_point }; }
@@ -336,6 +360,7 @@ async function handleWeb(req, ctx) {
   await odooServicio(p, ctx, cotizar ? 'quote' : 'pending', resp.pago && resp.pago.init_point);
   const lineas = [`Folio: ${folio}`, `Servicio: ${srv.titulo}`, `Paquete: ${pk.n}${pk.t ? ' (' + pk.t + ')' : ''}`,
     cotizar ? 'Precio: cotización' : `Total: ${pesos(total)} MXN IVA incluido${p.mensual ? ' al mes' : ''}`,
+    descuento ? `Descuento de miembro: ${Math.round(descuento * 100)}% (precio de lista ${pesos(pk.precio)} + IVA)` : '',
     `Pago en línea: ${resp.pago ? resp.pago.modo : cotizar ? 'no aplica' : 'NO (falta MP_ACCESS_TOKEN o falló Mercado Pago): manda la liga'}`, '',
     ...lineasContacto(c), rfc ? `RFC: ${rfc}` : '', `Para cuándo: ${cuando || '—'}`, '', `Proyecto: ${detalle}`].filter((x) => x !== '');
   const notify = [{ replyTo: c.correo, subject: `${cotizar ? 'Cotización' : 'Pedido'} ${folio} – ${srv.titulo} · ${c.nombre}`, text: lineas.join('\n') },

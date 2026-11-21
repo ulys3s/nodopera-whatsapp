@@ -28,6 +28,7 @@ function runner(envExtra = {}, mp = {}) {
       calls.odoo = calls.odoo || []; const a = o.body.params.args;
       if (mp.odooFalla) throw new Error('odoo caído');
       if (o.body.params.method === 'login') return { result: 7 };
+      if (a[4] === 'nodopera_member_by_email') { calls.miembro = (calls.miembro || 0) + 1; return { result: !!mp.miembro }; }
       calls.odoo.push(a[5][0]); return { result: { id: 1, number: a[5][0].folio, cuenta_nueva: calls.odoo.length === 1, url: 'https://portal.x/my/servicios/1', crear_clave: 'https://portal.x/web/signup?token=T', recuperar: 'https://portal.x/web/reset_password' } };
     }
     assert.equal(o.headers.Authorization, 'Bearer tok-prueba');
@@ -200,6 +201,13 @@ const tarjeta = { payment_method_id: 'visa', token: 'abc123TOKEN', installments:
     const OF = runner(OD, { odooFalla: true });
     r = await OF.web(pedido()); assert.equal(r.status, 200); assert.equal(OF.state.errors[0].where, 'odoo'); assert(!r.notify[1].text.includes('contraseña'));
     console.log('✓ portal de clientes (Odoo): alta al pedir, pagado al cobrar, y el pedido sigue si Odoo falla');
+    const lista = r.body.total;
+    const OM = runner(OD, { miembro: true });
+    r = await OM.web(pedido()); assert.equal(r.status, 200); assert.equal(r.body.descuento, 0.1);
+    assert(Math.abs(r.body.total - Math.round(Math.round(lista / 1.16 * 100) / 100 * 0.9 * 100) / 100 * 1.16) < 0.02, `total con descuento ${r.body.total} vs lista ${lista}`);
+    assert.equal(OM.calls.pref[0].body.items[0].unit_price, r.body.total); assert(r.notify[0].text.includes('Descuento de miembro: 10%'));
+    assert.equal(O.calls.miembro, 1); assert.equal(runner().calls.miembro, undefined);
+    console.log('✓ descuento de miembro: 10% solo si Odoo confirma la membresía; sin Odoo o si falla, precio de lista');
     console.log('✓ rechazos, planes mensuales y modo sin Mercado Pago');
   }
 
