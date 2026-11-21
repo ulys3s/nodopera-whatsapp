@@ -75,6 +75,9 @@ const tarjeta = { payment_method_id: 'visa', token: 'abc123TOKEN', installments:
     // validaciones
     r = await R.web({ tipo: 'contacto', origen: 'portada', turnstile: 'TOKEN-OK-0123456789', mensaje: 'Hola hola', contacto: contacto({ acepto: false }) }); assert.equal(r.body.error, 'contacto.acepto');
     r = await R.web({ tipo: 'contacto', origen: 'portada', turnstile: 'TOKEN-OK-0123456789', mensaje: 'Hola hola', contacto: contacto({ correo: 'no-es-correo' }) }); assert.equal(r.body.error, 'contacto.correo');
+    r = await R.web({ tipo: 'contacto', origen: 'portada', turnstile: 'TOKEN-OK-0123456789', mensaje: 'Hola hola', contacto: contacto({ correo: '' }) }); assert.equal(r.status, 200);
+    r = await R.web({ tipo: 'contacto', origen: 'tienda-mensaje', turnstile: 'TOKEN-OK-0123456789', mensaje: 'Hola hola', contacto: contacto({ correo: '' }) }); assert.equal(r.body.error, 'contacto.correo');
+    r = await R.web({ tipo: 'contacto', origen: 'portada', turnstile: 'TOKEN-OK-0123456789', mensaje: 'Hola hola', contacto: contacto({ correo: '', whatsapp: '' }) }); assert.equal(r.body.error, 'contacto.medio');
     r = await R.web({ tipo: 'contacto', origen: 'chat', turnstile: 'TOKEN-OK-0123456789', mensaje: 'Hola hola', contacto: contacto({ correo: '' }) }); assert.equal(r.status, 200); assert.equal(r.notify.length, 1);
     r = await R.web({ tipo: 'contacto', origen: 'agenda', turnstile: 'TOKEN-OK-0123456789', mensaje: '', extras: { Fecha: 'lunes 10:00', Tema: 'Odoo' }, contacto: contacto() });
     assert.equal(r.status, 200); assert(r.notify[0].text.includes('Fecha: lunes 10:00'));

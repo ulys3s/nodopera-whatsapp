@@ -50,7 +50,7 @@ async function turnstileOk(token, ip, ctx) {
   } catch (e) { return false; }
 }
 
-/** Contacto común a todos los formularios. WhatsApp a 10 dígitos; correo obligatorio salvo en el chat. */
+/** Contacto común a todos los formularios. WhatsApp a 10 dígitos; correo obligatorio solo en la tienda. */
 function contactoValido(c, correoObligatorio = true) {
   if (!c || typeof c !== 'object' || Array.isArray(c)) return { error: 'contacto' };
   const o = {
@@ -239,7 +239,8 @@ async function handleWeb(req, ctx) {
     if (!ctx.env.TURNSTILE_SECRET) errW(st, now, 'turnstile', 'Falta TURNSTILE_SECRET en .env: todo se rechaza');
     return RW(403, { ok: false, error: 'verificacion' });
   }
-  const cv = contactoValido(b.contacto, b.tipo === 'pedido' || b.origen !== 'chat');
+  // Correo obligatorio en la tienda (ahí llega su confirmación y el recibo); en los demás basta WhatsApp o correo
+  const cv = contactoValido(b.contacto, b.tipo === 'pedido' || /^tienda/.test(String(b.origen || '')));
   if (!cv.ok) return RW(400, { ok: false, error: cv.error });
   const c = cv.c;
 
