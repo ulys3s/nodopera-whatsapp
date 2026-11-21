@@ -3,7 +3,7 @@
   "name": "NodOpera · Bot DEMO WhatsApp",
   "nodes": [
     {
-      "id": "bba92825-de47-40df-9c04-34bb1d774c42",
+      "id": "0e1ba9fb-7f9f-48af-be5b-fd5dc755f755",
       "name": "Meta verifica (GET)",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -11,7 +11,7 @@
         0,
         0
       ],
-      "webhookId": "5bc3f3d4-95bd-4578-9c49-243a1c250caf",
+      "webhookId": "c6e8ec13-f48e-4fda-96ff-5cc4fdfbdd64",
       "parameters": {
         "httpMethod": "GET",
         "path": "wa-demo-0451174fb9",
@@ -20,7 +20,7 @@
       }
     },
     {
-      "id": "a4c50574-b582-4199-bc64-16e550025b73",
+      "id": "abff4f3a-6bf7-4037-ac55-9d7b0fd6d889",
       "name": "Responder challenge",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
@@ -35,7 +35,7 @@
       }
     },
     {
-      "id": "651e43bf-b80d-4e22-b20b-cbb4db09c0e3",
+      "id": "052043a9-979d-4867-b39f-01db8ba7f9c9",
       "name": "Mensaje entrante (POST)",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -43,7 +43,7 @@
         0,
         220
       ],
-      "webhookId": "2e9c91e2-8a80-4991-8152-df37316ad40c",
+      "webhookId": "47b84986-8ff2-43e8-9f0c-763a215caf9e",
       "parameters": {
         "httpMethod": "POST",
         "path": "wa-demo-0451174fb9",
@@ -54,7 +54,7 @@
       }
     },
     {
-      "id": "6d33e410-59e5-418c-9145-64b0caf50e54",
+      "id": "137b7b4d-78f5-42bb-b5d9-e600942532b1",
       "name": "Bot",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -67,7 +67,7 @@
       }
     },
     {
-      "id": "54d921d8-77c8-419e-b21d-249dde0a9401",
+      "id": "d6a6a6f3-9ae6-4fc2-9f17-dbf21adb2142",
       "name": "Avisar a Ulises (correo)",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,

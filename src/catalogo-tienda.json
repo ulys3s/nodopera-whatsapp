@@ -1,0 +1,265 @@
+{
+ "iva": 0.16,
+ "servicios": {
+  "automatizacion-excel-sheets": {
+   "paquetes": {
+    "una": {
+     "mensual": false,
+     "n": "Automatización",
+     "precio": 378,
+     "t": "Una tarea automatizada"
+    }
+   },
+   "titulo": "Automatización de Excel o Sheets"
+  },
+  "automatizacion-n8n": {
+   "paquetes": {
+    "flujo": {
+     "mensual": false,
+     "n": "Flujo",
+     "precio": 504,
+     "t": "Conecta 2 aplicaciones"
+    }
+   },
+   "titulo": "Automatización con n8n"
+  },
+  "bots-whatsapp": {
+   "paquetes": {
+    "automatizacion": {
+     "mensual": false,
+     "n": "Automatización",
+     "precio": null,
+     "t": "Procesos conectados"
+    },
+    "pedidos": {
+     "mensual": false,
+     "n": "Citas y pedidos",
+     "precio": null,
+     "t": "Bot que trabaja"
+    },
+    "respuestas": {
+     "mensual": false,
+     "n": "Respuestas",
+     "precio": null,
+     "t": "Bot de preguntas frecuentes"
+    }
+   },
+   "titulo": "Bots y automatización"
+  },
+  "camaras-wifi-red": {
+   "paquetes": {
+    "camaras": {
+     "mensual": false,
+     "n": "Cámaras",
+     "precio": null,
+     "t": "Videovigilancia"
+    },
+    "oficina": {
+     "mensual": false,
+     "n": "Oficina completa",
+     "precio": null,
+     "t": "Todo en uno"
+    },
+    "red": {
+     "mensual": false,
+     "n": "Red y Wi‑Fi",
+     "precio": null,
+     "t": "Conectividad"
+    }
+   },
+   "titulo": "Instalaciones"
+  },
+  "chatbot-ia": {
+   "paquetes": {
+    "web": {
+     "mensual": false,
+     "n": "Chatbot web",
+     "precio": 630,
+     "t": "Para tu página"
+    }
+   },
+   "titulo": "Chatbot con IA"
+  },
+  "consultoria-gratis": {
+   "paquetes": {
+    "llamada": {
+     "mensual": false,
+     "n": "Gratis",
+     "precio": 0,
+     "t": "30 minutos"
+    }
+   },
+   "titulo": "Consultoría gratis"
+  },
+  "equipo-ti-mensual": {
+   "paquetes": {
+    "esencial": {
+     "mensual": true,
+     "n": "Esencial",
+     "precio": 1470,
+     "t": "Para empezar con orden · hasta 5 equipos"
+    },
+    "pro": {
+     "mensual": true,
+     "n": "Pro",
+     "precio": 3500,
+     "t": "Tu área de TI completa · hasta 15 equipos"
+    },
+    "total": {
+     "mensual": true,
+     "n": "Total",
+     "precio": 6900,
+     "t": "TI + sistemas + datos · hasta 30 equipos"
+    }
+   },
+   "titulo": "Tu equipo de TI mensual"
+  },
+  "erp-crm": {
+   "paquetes": {
+    "agil": {
+     "mensual": false,
+     "n": "Arranque ágil",
+     "precio": null,
+     "t": "Un área primero"
+    },
+    "completo": {
+     "mensual": false,
+     "n": "Operación completa",
+     "precio": null,
+     "t": "Toda tu operación"
+    },
+    "sucursales": {
+     "mensual": false,
+     "n": "Sucursales",
+     "precio": null,
+     "t": "Varias sucursales o a la medida"
+    }
+   },
+   "titulo": "Sistema ERP + CRM"
+  },
+  "landing-page": {
+   "paquetes": {
+    "landing": {
+     "mensual": false,
+     "n": "Landing",
+     "precio": 504,
+     "t": "Una sección"
+    }
+   },
+   "titulo": "Landing page"
+  },
+  "membresia-cuida": {
+   "paquetes": {
+    "cuida": {
+     "mensual": true,
+     "n": "Cuida",
+     "precio": 590,
+     "t": "Hasta 3 equipos · remoto"
+    }
+   },
+   "titulo": "Membresía NodOpera Cuida"
+  },
+  "migracion-de-datos": {
+   "paquetes": {
+    "excel": {
+     "mensual": false,
+     "n": "Desde Excel",
+     "precio": null,
+     "t": "Migración de tus archivos"
+    },
+    "revision": {
+     "mensual": false,
+     "n": "Revisión gratis",
+     "precio": 0,
+     "t": "Revisa tu Excel"
+    },
+    "sistema": {
+     "mensual": false,
+     "n": "Desde otro sistema",
+     "precio": null,
+     "t": "Sistema anterior"
+    }
+   },
+   "titulo": "Migración de datos"
+  },
+  "pagina-web": {
+   "paquetes": {
+    "basico": {
+     "mensual": false,
+     "n": "Básico",
+     "precio": 1764,
+     "t": "Página de negocio"
+    },
+    "estandar": {
+     "mensual": false,
+     "n": "Estándar",
+     "precio": null,
+     "t": "Página que vende"
+    },
+    "premium": {
+     "mensual": false,
+     "n": "Premium",
+     "precio": null,
+     "t": "Página con herramientas"
+    }
+   },
+   "titulo": "Página web para tu negocio"
+  },
+  "respaldo-automatico": {
+   "paquetes": {
+    "equipo": {
+     "mensual": false,
+     "n": "Un equipo",
+     "precio": 315,
+     "t": "PC o carpeta"
+    }
+   },
+   "titulo": "Respaldo automático"
+  },
+  "seguridad-correo": {
+   "paquetes": {
+    "dominio": {
+     "mensual": false,
+     "n": "Un dominio",
+     "precio": 252,
+     "t": "SPF + DKIM + DMARC"
+    }
+   },
+   "titulo": "Seguridad de tu correo"
+  },
+  "soporte-por-hora": {
+   "paquetes": {
+    "hora": {
+     "mensual": false,
+     "n": "1 hora",
+     "precio": 225,
+     "t": "Soporte remoto"
+    }
+   },
+   "titulo": "Soporte remoto por hora"
+  },
+  "tableros": {
+   "paquetes": {
+    "direccion": {
+     "mensual": false,
+     "n": "Dirección",
+     "precio": null,
+     "t": "Tablero + seguimiento"
+    },
+    "finanzas": {
+     "mensual": false,
+     "n": "Ventas + finanzas",
+     "precio": null,
+     "t": "Para decidir"
+    },
+    "ventas": {
+     "mensual": false,
+     "n": "Ventas",
+     "precio": null,
+     "t": "Tablero de ventas"
+    }
+   },
+   "titulo": "Tableros para decidir"
+  }
+ }
+}
