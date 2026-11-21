@@ -3,7 +3,7 @@
   "name": "NodOpera · Diagnóstico (nodopera.com/diagnostico)",
   "nodes": [
     {
-      "id": "85c50e1d-9174-47de-80cb-5cd9b7d09d38",
+      "id": "242bcf6a-672b-4f01-be04-7afb6b1da27f",
       "name": "Diagnóstico (POST)",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -11,7 +11,7 @@
         0,
         0
       ],
-      "webhookId": "c24d351d-053d-4961-92d4-72ab6358f63b",
+      "webhookId": "db58acc2-f807-470e-8101-afb8ecfd3371",
       "parameters": {
         "httpMethod": "POST",
         "path": "diag-32990aa3fd",
@@ -22,7 +22,7 @@
       }
     },
     {
-      "id": "5dc6b909-247c-4dfd-8984-ce98820b24d9",
+      "id": "82513690-5e32-4e60-ba5c-7523f0564af0",
       "name": "Diagnóstico",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -35,7 +35,7 @@
       }
     },
     {
-      "id": "403a7363-d24f-4108-806f-b9adee605934",
+      "id": "968cd21c-1090-451c-8cdb-fb19c7cbe610",
       "name": "Responder",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
@@ -64,7 +64,7 @@
       }
     },
     {
-      "id": "23b0b89d-4381-4d22-93ac-493abdf18f8b",
+      "id": "cc405641-2664-4cf9-bdd8-941e98a1400d",
       "name": "Solo correos",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -77,7 +77,7 @@
       }
     },
     {
-      "id": "fec8612c-9c24-41e8-86e4-3649b3531563",
+      "id": "66cb558c-312f-45c7-b04a-ca4bebf2675d",
       "name": "Avisar a Ulises (correo)",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,

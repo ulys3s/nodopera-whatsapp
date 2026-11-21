@@ -335,7 +335,13 @@ async function handleMP(req, ctx) {
   if (!ctx.env.MP_ACCESS_TOKEN) return RW(200, { ok: true });
   let r;
   try { r = await ctx.http({ method: 'GET', url: `${WEB.mp}/v1/payments/${dataId}`, json: true, timeout: 20000, headers: mpHeaders(ctx) }); }
-  catch (e) { errW(st, now, 'mp.consulta', `${dataId}: ${String(e && e.message || e)}`); return RW(500, { ok: false }); }
+  catch (e) {
+    // Pago inexistente (p. ej. "Simular notificación" con un Data ID inventado): se acepta y se ignora,
+    // para que Mercado Pago no reintente. Cualquier otro error → 500 (MP reintenta más tarde).
+    const code = Number(e && (e.httpCode || e.statusCode || (e.response && (e.response.status || e.response.statusCode)))) || 0;
+    if (code === 404 || /\b404\b/.test(String(e && e.message || ''))) return RW(200, { ok: true, ignorado: 'no-existe' });
+    errW(st, now, 'mp.consulta', `${dataId}: ${String(e && e.message || e)}`); return RW(500, { ok: false });
+  }
   const folio = r && r.external_reference;
   const p = folio && W.pedidos[folio];
   if (!p) { errW(st, now, 'mp.webhook', `Pago ${dataId} con folio desconocido ${folio}`); return RW(200, { ok: true }); }

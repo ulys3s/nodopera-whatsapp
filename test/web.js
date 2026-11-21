@@ -179,6 +179,10 @@ const tarjeta = { payment_method_id: 'visa', token: 'abc123TOKEN', installments:
 
     const F = runner({}, { prefFalla: true });
     r = await F.web(pedido()); assert.equal(r.status, 200); assert.equal(r.body.pago, null); assert.equal(F.state.errors[0].where, 'mp.crear');
+    const N = runner({}, { consulta: () => { const e = new Error('Request failed with status code 404'); e.httpCode = '404'; throw e; } });
+    r = await N.aviso(123456); assert.equal(r.status, 200); assert.equal(r.body.ignorado, 'no-existe');
+    const X = runner({}, { consulta: () => { throw new Error('timeout'); } });
+    r = await X.aviso(123456); assert.equal(r.status, 500); assert.equal(X.state.errors[0].where, 'mp.consulta');
     console.log('✓ rechazos, planes mensuales y modo sin Mercado Pago');
   }
 
