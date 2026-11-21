@@ -194,17 +194,6 @@
    },
    "titulo": "Página web para tu negocio"
   },
-  "prueba-pago": {
-   "paquetes": {
-    "prueba": {
-     "mensual": false,
-     "n": "Prueba",
-     "precio": 8.62,
-     "t": "Cobro de prueba"
-    }
-   },
-   "titulo": "Prueba de pago"
-  },
   "respaldo-automatico": {
    "paquetes": {
     "equipo": {
