@@ -148,6 +148,17 @@
    },
    "titulo": "Landing page"
   },
+  "membresia-cuida": {
+   "paquetes": {
+    "cuida": {
+     "mensual": true,
+     "n": "Cuida",
+     "precio": 590,
+     "t": "Hasta 3 equipos · remoto"
+    }
+   },
+   "titulo": "Membresía NodOpera Cuida"
+  },
   "migracion-de-datos": {
    "paquetes": {
     "excel": {
