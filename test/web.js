@@ -24,6 +24,12 @@ function runner(envExtra = {}, mp = {}) {
   const pagos = {};
   async function httpRequest(o) {
     if (o.url.includes('challenges.cloudflare.com')) { calls.turnstile++; assert(o.body.includes('secret=ts-secret')); return { success: o.body.includes('response=TOKEN-OK') }; }
+    if (o.url.endsWith('/jsonrpc')) {
+      calls.odoo = calls.odoo || []; const a = o.body.params.args;
+      if (mp.odooFalla) throw new Error('odoo caído');
+      if (o.body.params.method === 'login') return { result: 7 };
+      calls.odoo.push(a[5][0]); return { result: { id: 1, number: a[5][0].folio, cuenta_nueva: calls.odoo.length === 1, url: 'https://portal.x/my/servicios/1', crear_clave: 'https://portal.x/web/signup?token=T', recuperar: 'https://portal.x/web/reset_password' } };
+    }
     assert.equal(o.headers.Authorization, 'Bearer tok-prueba');
     if (o.url.endsWith('/checkout/preferences')) { calls.pref.push(o); if (mp.prefFalla) throw new Error('500'); return { id: 'PREF-1', init_point: 'https://mp/pref' }; }
     if (o.url.endsWith('/preapproval')) { calls.sub.push(o); return { id: 'SUB-1', init_point: 'https://mp/sub' }; }
@@ -183,6 +189,17 @@ const tarjeta = { payment_method_id: 'visa', token: 'abc123TOKEN', installments:
     r = await N.aviso(123456); assert.equal(r.status, 200); assert.equal(r.body.ignorado, 'no-existe');
     const X = runner({}, { consulta: () => { throw new Error('timeout'); } });
     r = await X.aviso(123456); assert.equal(r.status, 500); assert.equal(X.state.errors[0].where, 'mp.consulta');
+    const OD = { ODOO_URL: 'https://portal.x', ODOO_DB: 'nodopera', ODOO_USER: 'bot', ODOO_API_KEY: 'k' };
+    const O = runner(OD);
+    r = await O.web(pedido()); assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(O.calls.odoo[0].pago, 'pending'); assert.equal(O.calls.odoo[0].pay_url, 'https://mp/pref'); assert.equal(O.calls.odoo[0].folio, r.body.folio);
+    assert(r.notify[1].text.includes('Crea tu contraseña aquí: https://portal.x/web/signup?token=T'));
+    const rp = await O.web({ tipo: 'pagar', folio: r.body.folio, clave: r.body.clave, formData: tarjeta });
+    assert.equal(rp.body.status, 'approved'); assert.equal(O.calls.odoo[1].pago, 'paid');
+    assert(rp.notify[1].text.includes('https://portal.x/web/signup?token=T'));
+    const OF = runner(OD, { odooFalla: true });
+    r = await OF.web(pedido()); assert.equal(r.status, 200); assert.equal(OF.state.errors[0].where, 'odoo'); assert(!r.notify[1].text.includes('contraseña'));
+    console.log('✓ portal de clientes (Odoo): alta al pedir, pagado al cobrar, y el pedido sigue si Odoo falla');
     console.log('✓ rechazos, planes mensuales y modo sin Mercado Pago');
   }
 

@@ -178,6 +178,44 @@ function resumenPago(r) {
 const ESTADOS = { approved: 'Pagado', in_process: 'Pago en revisión', pending: 'Pago pendiente', authorized: 'Pago autorizado',
   rejected: 'Pago rechazado', cancelled: 'Pago cancelado', refunded: 'Pago devuelto', charged_back: 'Contracargo' };
 
+/**
+ * Registra (o actualiza) el pedido en el portal de clientes (Odoo): crea su cuenta y su servicio con avance.
+ * Nunca tumba el pedido: si Odoo no está configurado o falla, se anota el error y el pedido sigue.
+ * pago: 'pending' | 'paid' | 'quote'. Devuelve { url, crear_clave, recuperar, cuenta_nueva } o null.
+ */
+async function odooServicio(p, ctx, pago, payUrl) {
+  const e = ctx.env;
+  if (!e.ODOO_URL || !e.ODOO_DB || !e.ODOO_USER || !e.ODOO_API_KEY) return null;
+  try {
+    const rpc = async (service, method, args) => {
+      const r = await ctx.http({ method: 'POST', url: e.ODOO_URL.replace(/\/$/, '') + '/jsonrpc', json: true, timeout: 20000,
+        body: { jsonrpc: '2.0', method: 'call', params: { service, method, args } } });
+      if (r && r.error) throw new Error(r.error.data && r.error.data.message || r.error.message);
+      return r && r.result;
+    };
+    const uid = await rpc('common', 'login', [e.ODOO_DB, e.ODOO_USER, e.ODOO_API_KEY]);
+    if (!uid) throw new Error('login Odoo');
+    const r = await rpc('object', 'execute_kw', [e.ODOO_DB, uid, e.ODOO_API_KEY, 'nodopera.service', 'create_from_shop', [{
+      folio: p.folio, servicio: p.titulo, paquete: p.paqueteNombre, slug: p.slug, detalle: p.detalle || '', total: p.total, mensual: !!p.mensual,
+      pago, pay_url: payUrl || '', contacto: { nombre: p.contacto.nombre, empresa: p.contacto.empresa || '', correo: p.contacto.correo, whatsapp: p.contacto.whatsapp || '' } }]]);
+    if (r && r.url) {
+      const https = (u) => (typeof u === 'string' && /^https:\/\/[^\s]+$/.test(u) ? u : '');
+      p.portal = { url: https(r.url), crear_clave: https(r.crear_clave) || (p.portal && p.portal.crear_clave) || '', recuperar: https(r.recuperar), cuenta_nueva: !!r.cuenta_nueva || !!(p.portal && p.portal.cuenta_nueva) };
+    }
+    return p.portal || null;
+  } catch (err) {
+    errW(ctx.state, ctx.now, 'odoo', `${p.folio}: ${String(err && err.message || err)}`);
+    return null;
+  }
+}
+/** Renglones del correo al cliente que lo llevan a su cuenta del portal. */
+function lineasPortal(p) {
+  const o = p.portal;
+  if (!o || !o.url) return [];
+  return ['', 'Sigue el avance de tu servicio y escríbenos desde tu cuenta de NodOpera:',
+    o.cuenta_nueva && o.crear_clave ? `Crea tu contraseña aquí: ${o.crear_clave}` : o.cuenta_nueva && o.recuperar ? `Crea tu contraseña aquí (usa este mismo correo): ${o.recuperar}` : `Entra aquí: ${o.url}`];
+}
+
 function correosPagado(p) {
   const txt = [`Folio: ${p.folio}`, `Servicio: ${p.titulo} · ${p.paqueteNombre}`, `Total: ${pesos(p.total)} MXN (IVA incluido)${p.mensual ? ' al mes' : ''}`,
     `Pago Mercado Pago: ${p.pago && p.pago.id} (${p.pago && p.pago.metodo})`, '', ...lineasContacto(p.contacto)].join('\n');
@@ -185,7 +223,7 @@ function correosPagado(p) {
     { replyTo: p.contacto.correo, subject: `Pago recibido ${p.folio} – ${p.titulo}`, text: txt + `\n\nProyecto: ${p.detalle || '—'}` },
     { to: 'cliente', correo: p.contacto.correo, subject: `Recibimos tu pago · ${p.folio} · NodOpera`,
       text: [`Hola ${p.contacto.nombre.split(' ')[0]},`, '', `Recibimos tu pago de ${pesos(p.total)} MXN por ${p.titulo} (${p.paqueteNombre}).`,
-        `Tu folio es ${p.folio}. Te escribimos en menos de un día hábil para arrancar.`, '', 'Si necesitas factura (CFDI), responde este correo con tu constancia de situación fiscal.', '',
+        `Tu folio es ${p.folio}. Te escribimos en menos de un día hábil para arrancar.`, ...lineasPortal(p), '', 'Si necesitas factura (CFDI), responde este correo con tu constancia de situación fiscal.', '',
         'NodOpera · ulises@nodopera.com · WhatsApp 33 2248 8131', 'https://nodopera.com'].join('\n') },
   ];
 }
@@ -229,7 +267,7 @@ async function handleWeb(req, ctx) {
     p.pago = resumenPago(r);
     p.estado = ESTADOS[p.pago.status] || p.pago.status || 'Pago enviado';
     const notify = [];
-    if (p.pago.status === 'approved' && !p.avisoPagado) { p.avisoPagado = now.toISOString(); notify.push(...correosPagado(p)); }
+    if (p.pago.status === 'approved' && !p.avisoPagado) { p.avisoPagado = now.toISOString(); await odooServicio(p, ctx, 'paid'); notify.push(...correosPagado(p)); }
     else if (p.pago.status === 'pending' || p.pago.status === 'in_process') notify.push({ subject: `Pago pendiente ${p.folio} (${p.pago.metodo})`, text: `El cliente eligió ${p.pago.metodo}; Mercado Pago avisará cuando se acredite.\n\n${lineasContacto(p.contacto).join('\n')}` });
     return RW(200, { ok: true, folio: p.folio, status: p.pago.status, detalle: p.pago.detalle, ticket: p.pago.ticket }, notify);
   }
@@ -295,6 +333,7 @@ async function handleWeb(req, ctx) {
       errW(st, now, 'mp.crear', `${folio}: ${String(e && e.message || e)}`);
     }
   }
+  await odooServicio(p, ctx, cotizar ? 'quote' : 'pending', resp.pago && resp.pago.init_point);
   const lineas = [`Folio: ${folio}`, `Servicio: ${srv.titulo}`, `Paquete: ${pk.n}${pk.t ? ' (' + pk.t + ')' : ''}`,
     cotizar ? 'Precio: cotización' : `Total: ${pesos(total)} MXN IVA incluido${p.mensual ? ' al mes' : ''}`,
     `Pago en línea: ${resp.pago ? resp.pago.modo : cotizar ? 'no aplica' : 'NO (falta MP_ACCESS_TOKEN o falló Mercado Pago): manda la liga'}`, '',
@@ -305,7 +344,7 @@ async function handleWeb(req, ctx) {
         cotizar ? 'Te mandamos la propuesta con alcance, tiempos y precio cerrado en menos de un día hábil.'
           : resp.pago ? `Total: ${pesos(total)} MXN IVA incluido${p.mensual ? ' al mes' : ''}. Si no terminaste el pago, responde este correo y te ayudamos.`
             : `Total: ${pesos(total)} MXN IVA incluido${p.mensual ? ' al mes' : ''}. Te enviamos el enlace de pago de Mercado Pago en menos de un día hábil.`,
-        '', 'NodOpera · ulises@nodopera.com · WhatsApp 33 2248 8131', 'https://nodopera.com'].join('\n') }];
+        ...lineasPortal(p), '', 'NodOpera · ulises@nodopera.com · WhatsApp 33 2248 8131', 'https://nodopera.com'].join('\n') }];
   return RW(200, resp, notify);
 }
 
@@ -352,6 +391,6 @@ async function handleMP(req, ctx) {
   p.pago = resumenPago(r);
   p.estado = ESTADOS[p.pago.status] || p.pago.status;
   const notify = [];
-  if (p.pago.status === 'approved' && !p.avisoPagado) { p.avisoPagado = now.toISOString(); notify.push(...correosPagado(p)); }
+  if (p.pago.status === 'approved' && !p.avisoPagado) { p.avisoPagado = now.toISOString(); await odooServicio(p, ctx, 'paid'); notify.push(...correosPagado(p)); }
   return RW(200, { ok: true }, notify);
 }

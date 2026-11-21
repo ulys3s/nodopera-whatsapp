@@ -158,7 +158,7 @@ function diagWorkflow() {
 fs.writeFileSync(path.join(__dirname, 'n8n/workflows/diagnostico.json'), JSON.stringify(diagWorkflow(), null, 2));
 
 // ---------------- Formularios y pagos (nodopera.com: tienda, contacto, agenda, instalación, chat) ----------------
-const WEB_ENV = ['TURNSTILE_SECRET', 'MP_ACCESS_TOKEN', 'MP_WEBHOOK_SECRET', 'MP_NOTIFICATION_URL'];
+const WEB_ENV = ['TURNSTILE_SECRET', 'MP_ACCESS_TOKEN', 'MP_WEBHOOK_SECRET', 'MP_NOTIFICATION_URL', 'ODOO_URL', 'ODOO_DB', 'ODOO_USER', 'ODOO_API_KEY'];
 const WEB_WRAPPER = `
 // ---- Adaptador n8n: no editar ----
 // Secretos SOLO desde $env (.env del contenedor). Siempre devuelve UNA respuesta para "Responder".
