@@ -10,6 +10,8 @@ const paths = fs.existsSync(cfgFile) ? JSON.parse(fs.readFileSync(cfgFile, 'utf8
   clientes: 'wa-clientes-' + crypto.randomBytes(5).toString('hex'),
 };
 if (!paths.diagnostico) paths.diagnostico = 'diag-' + crypto.randomBytes(5).toString('hex');
+if (!paths.web) paths.web = 'web-' + crypto.randomBytes(5).toString('hex');
+if (!paths.mp) paths.mp = 'mp-' + crypto.randomBytes(6).toString('hex');
 fs.writeFileSync(cfgFile, JSON.stringify(paths, null, 2));
 
 const WRAPPER = `
@@ -155,5 +157,93 @@ function diagWorkflow() {
 }
 fs.writeFileSync(path.join(__dirname, 'n8n/workflows/diagnostico.json'), JSON.stringify(diagWorkflow(), null, 2));
 
+// ---------------- Formularios y pagos (nodopera.com: tienda, contacto, agenda, instalación, chat) ----------------
+const WEB_ENV = ['TURNSTILE_SECRET', 'MP_ACCESS_TOKEN', 'MP_WEBHOOK_SECRET', 'MP_NOTIFICATION_URL'];
+const WEB_WRAPPER = `
+// ---- Adaptador n8n: no editar ----
+// Secretos SOLO desde $env (.env del contenedor). Siempre devuelve UNA respuesta para "Responder".
+const _crypto = require('crypto');
+const _E = $env;
+const _helpers = this.helpers;
+/** Comparación en tiempo constante (claves de pedido). */
+function _timingEq(a, b) {
+  const x = Buffer.from(String(a)), y = Buffer.from(String(b));
+  return x.length === y.length && _crypto.timingSafeEqual(x, y);
+}
+/** Clave secreta de un pedido: 32 caracteres hex aleatorios. */
+function _clave() { return _crypto.randomBytes(16).toString('hex'); }
+/** x-signature de Mercado Pago: v1 = HMAC-SHA256(secreto, manifiesto) en hex. */
+function _hmacEq(secret, manifest, v1) {
+  const esperado = _crypto.createHmac('sha256', secret).update(manifest).digest();
+  const recibido = Buffer.from(String(v1), 'hex');
+  return recibido.length === esperado.length && _crypto.timingSafeEqual(recibido, esperado);
+}
+const ctx = {
+  env: Object.fromEntries(ENV_KEYS.map((k) => [k, _E[k]])),
+  state: $getWorkflowStaticData('global'),
+  now: new Date(),
+  http: (o) => _helpers.httpRequest(o),
+};
+const _it = $input.first().json;
+const _h = _it.headers || {};
+const _origin = String(_h.origin || '');
+let _out;
+try {
+  _out = HANDLER_CALL;
+} catch (e) {
+  ctx.state.errors = [{ at: ctx.now.toISOString(), where: 'HANDLER_NAME', detail: String(e && e.message || e).slice(0, 300) }, ...(ctx.state.errors || [])].slice(0, 30);
+  _out = { status: 500, body: { ok: false, error: 'interno' }, notify: [] };
+}
+return [{ json: { status: _out.status, body: _out.body,
+  notify: (_out.notify || []).map((n) => ({ subject: n.subject, text: n.text, to: n.to === 'cliente' ? n.correo : _E.NOTIFY_TO, from: _E.NOTIFY_FROM,
+    replyTo: n.to === 'cliente' ? 'ulises@nodopera.com' : (n.replyTo || _E.NOTIFY_TO) })) } }];
+`;
+const CALLS = {
+  web: "await handleWeb({ origin: _origin, ip: String(_h['cf-connecting-ip'] || ''), body: _it.body, bytes: Buffer.byteLength(JSON.stringify(_it.body || '')) }, ctx)",
+  mp: 'await handleMP({ headers: _h, query: _it.query || {}, body: _it.body }, ctx)',
+};
+function webWorkflow() {
+  const catalogo = JSON.parse(read('catalogo-tienda.json'));
+  const base = '// Formularios y pagos NodOpera · generado por build.js desde src/core.js + src/web.js + src/catalogo-tienda.json\n'
+    + read('core.js') + '\nconst CATALOGO = ' + JSON.stringify(catalogo) + ';\n' + read('web.js') + '\n';
+  const code = (k, name) => base + WEB_WRAPPER.replace('ENV_KEYS', JSON.stringify(WEB_ENV)).replace('HANDLER_CALL', CALLS[k]).replace('HANDLER_NAME', name);
+  const responder = (name, y) => ({ id: crypto.randomUUID(), name, type: 'n8n-nodes-base.respondToWebhook', typeVersion: 1.1, position: [480, y],
+    parameters: { respondWith: 'json', responseBody: '={{ JSON.stringify($json.body) }}',
+      options: { responseCode: '={{ $json.status }}', responseHeaders: { entries: [{ name: 'Cache-Control', value: 'no-store' }, { name: 'Vary', value: 'Origin' }] } } } });
+  const correos = (name, y) => ({ id: crypto.randomUUID(), name, type: 'n8n-nodes-base.code', typeVersion: 2, position: [720, y],
+    parameters: { jsCode: 'return $input.all().flatMap((i) => (i.json.notify || []).filter((n) => n.to && n.from).map((n) => ({ json: n })));' } });
+  const mail = (name, y) => ({ id: crypto.randomUUID(), name, type: 'n8n-nodes-base.emailSend', typeVersion: 2.1, position: [960, y], onError: 'continueRegularOutput',
+    parameters: { fromEmail: '={{ $json.from }}', toEmail: '={{ $json.to }}', subject: '={{ $json.subject }}', emailFormat: 'text', text: '={{ $json.text }}', options: { appendAttribution: false, replyTo: '={{ $json.replyTo }}' } },
+    credentials: { smtp: { id: 'smtpNodOpera0001', name: 'SMTP Gmail NodOpera' } } });
+  return {
+    id: 'nodoperaWebPagos1',
+    name: 'NodOpera · Formularios y pagos (nodopera.com)',
+    nodes: [
+      { id: crypto.randomUUID(), name: 'Formulario (POST)', type: 'n8n-nodes-base.webhook', typeVersion: 2, position: [0, 0], webhookId: crypto.randomUUID(),
+        parameters: { httpMethod: 'POST', path: paths.web, responseMode: 'responseNode', options: { allowedOrigins: 'https://nodopera.com,https://www.nodopera.com' } } },
+      { id: crypto.randomUUID(), name: 'Formularios', type: 'n8n-nodes-base.code', typeVersion: 2, position: [240, 0], parameters: { jsCode: code('web', 'handleWeb') } },
+      responder('Responder', 0), correos('Solo correos', 0), mail('Enviar correos', 0),
+      { id: crypto.randomUUID(), name: 'Aviso Mercado Pago (POST)', type: 'n8n-nodes-base.webhook', typeVersion: 2, position: [0, 260], webhookId: crypto.randomUUID(),
+        parameters: { httpMethod: 'POST', path: paths.mp, responseMode: 'responseNode', options: {} } },
+      { id: crypto.randomUUID(), name: 'Pagos', type: 'n8n-nodes-base.code', typeVersion: 2, position: [240, 260], parameters: { jsCode: code('mp', 'handleMP') } },
+      responder('Responder MP', 260), correos('Solo correos MP', 260), mail('Enviar correos MP', 260),
+    ],
+    connections: {
+      'Formulario (POST)': { main: [[{ node: 'Formularios', type: 'main', index: 0 }]] },
+      Formularios: { main: [[{ node: 'Responder', type: 'main', index: 0 }]] },
+      Responder: { main: [[{ node: 'Solo correos', type: 'main', index: 0 }]] },
+      'Solo correos': { main: [[{ node: 'Enviar correos', type: 'main', index: 0 }]] },
+      'Aviso Mercado Pago (POST)': { main: [[{ node: 'Pagos', type: 'main', index: 0 }]] },
+      Pagos: { main: [[{ node: 'Responder MP', type: 'main', index: 0 }]] },
+      'Responder MP': { main: [[{ node: 'Solo correos MP', type: 'main', index: 0 }]] },
+      'Solo correos MP': { main: [[{ node: 'Enviar correos MP', type: 'main', index: 0 }]] },
+    },
+    settings: { executionOrder: 'v1', timezone: 'America/Mexico_City', saveDataSuccessExecution: 'none' },
+    active: false,
+    pinData: {},
+  };
+}
+fs.writeFileSync(path.join(__dirname, 'n8n/workflows/formularios-pagos.json'), JSON.stringify(webWorkflow(), null, 2));
+
 console.log('Listo. Rutas de webhook:', paths);
-module.exports = { WRAPPER, DIAG_WRAPPER };
+module.exports = { WRAPPER, DIAG_WRAPPER, WEB_WRAPPER };

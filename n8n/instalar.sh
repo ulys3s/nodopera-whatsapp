@@ -14,7 +14,7 @@ if [ ! -f .env ]; then
   echo "Creé $(pwd)/.env con llaves aleatorias."
 fi
 # Variables del Diagnóstico NodOpera: se agregan vacías si faltan (las llaves las pega Ulises; nunca van al chat ni a git)
-for v in DIAG_MODO ANTHROPIC_API_KEY DIAG_MODEL TURNSTILE_SECRET DIAG_MONTHLY_LIMIT; do
+for v in DIAG_MODO ANTHROPIC_API_KEY DIAG_MODEL TURNSTILE_SECRET DIAG_MONTHLY_LIMIT MP_ACCESS_TOKEN MP_WEBHOOK_SECRET MP_NOTIFICATION_URL; do
   grep -q "^$v=" .env || case $v in
     DIAG_MODO) echo "DIAG_MODO=reglas   # reglas (sin IA, sin costo) | ia (API de Claude)" >> .env ;;
     DIAG_MODEL) echo "DIAG_MODEL=claude-sonnet-5-5" >> .env ;;
@@ -62,6 +62,11 @@ reintentar $C exec -T n8n n8n publish:workflow --id=nodoperaDiagnostico1
 # 6) Dudas NodOpera (nodopera.com/dudas/): contesta con reglas y avisa por correo
 reintentar $C exec -T n8n n8n import:workflow --input=/import/workflows/dudas.json
 reintentar $C exec -T n8n n8n publish:workflow --id=nodoperaDudas1
+# 7) Formularios y pagos de nodopera.com (contacto, agenda, instalación, chat, tienda + Mercado Pago)
+reintentar $C exec -T n8n n8n import:workflow --input=/import/workflows/formularios-pagos.json
+reintentar $C exec -T n8n n8n publish:workflow --id=nodoperaWebPagos1
+[ -n "${MP_ACCESS_TOKEN:-}" ] || echo "ℹ️  Sin MP_ACCESS_TOKEN: la tienda registra pedidos y avisa por correo, pero NO cobra en la página."
+if [ -n "${MP_ACCESS_TOKEN:-}" ] && [ -z "${MP_WEBHOOK_SECRET:-}" ]; then echo "⚠️  Falta MP_WEBHOOK_SECRET: los pagos con tarjeta sí se confirman, pero los avisos de OXXO/transferencia se descartan."; fi
 [ -n "${TURNSTILE_SECRET:-}" ] || echo "⚠️  Falta TURNSTILE_SECRET en $(pwd)/.env: el diagnóstico RECHAZA todo (403)."
 if [ "${DIAG_MODO:-reglas}" = ia ]; then
   [ -n "${ANTHROPIC_API_KEY:-}" ] || echo "⚠️  DIAG_MODO=ia sin ANTHROPIC_API_KEY: los reportes salen con el motor de reglas."
@@ -86,3 +91,10 @@ DUDAS=$(python3 -c "import json;print(json.load(open('paths.json'))['dudas'])")
 echo
 echo "✅ Dudas NodOpera instalado."
 echo "   URL pública (la usa nodopera.com/dudas/): https://wa.nodopera.com/webhook/$DUDAS"
+WEBR=$(python3 -c "import json;print(json.load(open('paths.json'))['web'])")
+MPR=$(python3 -c "import json;print(json.load(open('paths.json'))['mp'])")
+echo
+echo "✅ Formularios y pagos instalado."
+echo "   URL pública de formularios (la usa nodopera.com): https://wa.nodopera.com/webhook/$WEBR"
+echo "   URL de notificaciones para Mercado Pago (Webhooks → Pagos): https://wa.nodopera.com/webhook/$MPR"
+echo "   Prueba local: curl -s -o /dev/null -w '%{http_code}\\n' -X POST -H 'Origin: https://nodopera.com' -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:5678/webhook/$WEBR  → 400"
